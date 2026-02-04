@@ -42,6 +42,26 @@ ALGOLIA_APP_ID = "3TA8NT85XJ"
 ALGOLIA_INDEX = "recipes-production-de"
 SEARCH_TOKEN_FILE = SCRIPT_DIR / "cookidoo_search_token.json"
 
+# Recipe Categories (ID -> German name)
+CATEGORIES = {
+    "vorspeisen": "VrkNavCategory-RPF-001",
+    "suppen": "VrkNavCategory-RPF-002",
+    "pasta": "VrkNavCategory-RPF-003",
+    "fleisch": "VrkNavCategory-RPF-004",
+    "fisch": "VrkNavCategory-RPF-005",
+    "vegetarisch": "VrkNavCategory-RPF-006",
+    "beilagen": "VrkNavCategory-RPF-008",
+    "desserts": "VrkNavCategory-RPF-011",
+    "herzhaft-backen": "VrkNavCategory-RPF-012",
+    "kuchen": "VrkNavCategory-RPF-013",
+    "brot": "VrkNavCategory-RPF-014",
+    "getraenke": "VrkNavCategory-RPF-015",
+    "grundrezepte": "VrkNavCategory-RPF-016",
+    "saucen": "VrkNavCategory-RPF-018",
+    "snacks": "VrkNavCategory-RPF-020",
+}
+CATEGORY_NAMES = {v: k for k, v in CATEGORIES.items()}  # Reverse lookup
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Cookie Management
@@ -475,6 +495,7 @@ def search_recipes(
     max_time: Optional[int] = None,  # max time in minutes
     difficulty: Optional[str] = None,  # easy, medium, advanced
     tm_version: Optional[str] = None,  # TM5, TM6, TM7
+    category: Optional[str] = None,  # category key from CATEGORIES
 ) -> tuple[list[dict], int]:
     """
     Search Cookidoo recipes via Algolia.
@@ -500,6 +521,10 @@ def search_recipes(
         filters.append(f"difficulty:{difficulty}")
     if tm_version:
         filters.append(f"tmversion:{tm_version}")
+    if category:
+        cat_id = CATEGORIES.get(category.lower())
+        if cat_id:
+            filters.append(f"categories.id:{cat_id}")
     
     search_params = {
         "query": query,
@@ -1031,6 +1056,7 @@ def cmd_search(args):
     max_time = getattr(args, 'time', None)
     difficulty = getattr(args, 'difficulty', None)
     tm_version = getattr(args, 'tm', None)
+    category = getattr(args, 'category', None)
     
     print()
     print(f"🔍 Suche in Cookidoo: '{query}'")
@@ -1043,6 +1069,8 @@ def cmd_search(args):
         filter_parts.append(difficulty)
     if tm_version:
         filter_parts.append(tm_version)
+    if category:
+        filter_parts.append(category)
     if filter_parts:
         print(f"   Filter: {', '.join(filter_parts)}")
     
@@ -1053,7 +1081,7 @@ def cmd_search(args):
         print("❌ Nicht eingeloggt. Führe zuerst 'tmx login' aus.")
         return
     
-    results, total = search_recipes(query, limit, max_time, difficulty, tm_version)
+    results, total = search_recipes(query, limit, max_time, difficulty, tm_version, category)
     
     if not results:
         print("Keine Rezepte gefunden.")
@@ -1261,6 +1289,19 @@ def cmd_recipe(args):
                 if name and value:
                     print(f"  • {name}: {value} {unit}")
         print()
+
+
+def cmd_categories(args):
+    """List available recipe categories."""
+    print()
+    print("📂 Verfügbare Kategorien")
+    print("─" * 40)
+    print()
+    for name in sorted(CATEGORIES.keys()):
+        print(f"  • {name}")
+    print()
+    print("Verwendung: tmx search \"\" --category <name>")
+    print()
 
 
 def cmd_status(args):
@@ -1752,7 +1793,7 @@ _tmx_completion() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="plan search recipe today shopping status cache login completion"
+    local commands="plan search recipe categories today shopping status cache login completion"
     local plan_cmds="show sync add remove move"
     local shopping_cmds="show add add-item from-plan remove clear export"
     local cache_cmds="clear"
@@ -1788,7 +1829,7 @@ _tmx_completion() {
                     from-plan) COMPREPLY=($(compgen -W "--days -d --help" -- "${cur}")) ;;
                     *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
                 esac ;;
-            search) COMPREPLY=($(compgen -W "--limit -n --time -t --difficulty -d --tm --help" -- "${cur}")) ;;
+            search) COMPREPLY=($(compgen -W "--limit -n --time -t --difficulty -d --tm --category -c --help" -- "${cur}")) ;;
             cache)
                 case "$subcmd" in
                     clear) COMPREPLY=($(compgen -W "--all -a --help" -- "${cur}")) ;;
@@ -1844,6 +1885,7 @@ _tmx() {
                 'plan:Wochenplan verwalten'
                 'search:Rezepte in Cookidoo suchen'
                 'recipe:Rezeptdetails anzeigen'
+                'categories:Kategorien anzeigen'
                 'today:Heutige Rezepte anzeigen'
                 'shopping:Einkaufsliste verwalten'
                 'status:Status anzeigen'
@@ -1908,7 +1950,7 @@ _tmx() {
                     esac
                     ;;
                 search)
-                    _arguments '1:query' '--limit[Anzahl]:limit' '-n[Anzahl]:limit' '--time[Max. Zeit]:minutes' '-t[Max. Zeit]:minutes' '--difficulty[Schwierigkeit]:difficulty:(easy medium advanced)' '-d[Schwierigkeit]:difficulty:(easy medium advanced)' '--tm[Thermomix]:version:(TM5 TM6 TM7)'
+                    _arguments '1:query' '--limit[Anzahl]:limit' '-n[Anzahl]:limit' '--time[Max. Zeit]:minutes' '-t[Max. Zeit]:minutes' '--difficulty[Schwierigkeit]:difficulty:(easy medium advanced)' '-d[Schwierigkeit]:difficulty:(easy medium advanced)' '--tm[Thermomix]:version:(TM5 TM6 TM7)' '--category[Kategorie]:category:(vorspeisen suppen pasta fleisch fisch vegetarisch beilagen desserts herzhaft-backen kuchen brot getraenke grundrezepte saucen snacks)' '-c[Kategorie]:category:(vorspeisen suppen pasta fleisch fisch vegetarisch beilagen desserts herzhaft-backen kuchen brot getraenke grundrezepte saucen snacks)'
                     ;;
                 recipe)
                     _arguments '1:recipe_id'
@@ -1930,7 +1972,7 @@ compdef _tmx tmx
 FISH_COMPLETION = '''
 # tmx completions for fish
 
-set -l commands plan search recipe today shopping status cache login completion
+set -l commands plan search recipe categories today shopping status cache login completion
 set -l plan_cmds show sync add remove move
 set -l shopping_cmds show add add-item from-plan remove clear export
 set -l cache_cmds clear
@@ -1939,6 +1981,7 @@ complete -c tmx -f
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "plan" -d "Wochenplan verwalten"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "search" -d "Rezepte suchen"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "recipe" -d "Rezeptdetails"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "categories" -d "Kategorien"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "today" -d "Heutige Rezepte"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "shopping" -d "Einkaufsliste"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "status" -d "Status anzeigen"
@@ -1982,6 +2025,7 @@ complete -c tmx -n "__fish_seen_subcommand_from search" -l limit -s n -d "Anzahl
 complete -c tmx -n "__fish_seen_subcommand_from search" -l time -s t -d "Max. Zeit (Min)"
 complete -c tmx -n "__fish_seen_subcommand_from search" -l difficulty -s d -d "Schwierigkeit" -a "easy medium advanced"
 complete -c tmx -n "__fish_seen_subcommand_from search" -l tm -d "Thermomix-Version" -a "TM5 TM6 TM7"
+complete -c tmx -n "__fish_seen_subcommand_from search" -l category -s c -d "Kategorie" -a "vorspeisen suppen pasta fleisch fisch vegetarisch beilagen desserts herzhaft-backen kuchen brot getraenke grundrezepte saucen snacks"
 
 # login options
 complete -c tmx -n "__fish_seen_subcommand_from login" -l email -s e -d "E-Mail"
@@ -2062,12 +2106,17 @@ def build_parser():
     search_parser.add_argument("-t", "--time", type=int, help="Max. Zubereitungszeit in Minuten")
     search_parser.add_argument("-d", "--difficulty", choices=["easy", "medium", "advanced"], help="Schwierigkeitsgrad")
     search_parser.add_argument("--tm", choices=["TM5", "TM6", "TM7"], help="Thermomix-Version")
+    search_parser.add_argument("-c", "--category", choices=list(CATEGORIES.keys()), help="Kategorie")
     search_parser.set_defaults(func=cmd_search)
     
     # recipe command
     recipe_parser = sub.add_parser("recipe", help="Rezeptdetails anzeigen")
     recipe_parser.add_argument("recipe_id", help="Rezept-ID (z.B. r130616)")
     recipe_parser.set_defaults(func=cmd_recipe)
+    
+    # categories command
+    categories_parser = sub.add_parser("categories", help="Verfügbare Kategorien anzeigen")
+    categories_parser.set_defaults(func=cmd_categories)
     
     # today command
     today_parser = sub.add_parser("today", help="Heutige Rezepte anzeigen")

@@ -101,7 +101,10 @@ tmx search "Curry" -n 20               # More results
 tmx search "Salat" --time 15           # Max 15 minutes
 tmx search "Kuchen" --difficulty easy  # Easy recipes only
 tmx search "Suppe" --tm TM6            # TM6 recipes only
+tmx search "" --category vegetarisch   # Browse by category
 tmx search "Pasta" -t 30 -d easy       # Combine filters
+
+tmx categories                         # List all categories
 ```
 
 ### Recipe Details
