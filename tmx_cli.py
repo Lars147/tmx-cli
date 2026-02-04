@@ -1290,6 +1290,146 @@ def cmd_shopping_from_plan(args):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Shell Completion
+# ─────────────────────────────────────────────────────────────────────────────
+
+BASH_COMPLETION = '''
+_tmx_completion() {
+    local cur prev words cword
+    _init_completion || return
+
+    local commands="plan search today shopping status login completion"
+    local plan_cmds="show sync add remove move"
+    local shopping_cmds="show add from-plan remove clear"
+
+    case "${cword}" in
+        1)
+            COMPREPLY=($(compgen -W "${commands}" -- "${cur}"))
+            ;;
+        2)
+            case "${prev}" in
+                plan)
+                    COMPREPLY=($(compgen -W "${plan_cmds}" -- "${cur}"))
+                    ;;
+                shopping)
+                    COMPREPLY=($(compgen -W "${shopping_cmds}" -- "${cur}"))
+                    ;;
+                completion)
+                    COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}"))
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+complete -F _tmx_completion tmx
+'''
+
+ZSH_COMPLETION = '''
+#compdef tmx
+
+_tmx() {
+    local -a commands plan_cmds shopping_cmds
+
+    commands=(
+        'plan:Wochenplan verwalten'
+        'search:Rezepte in Cookidoo suchen'
+        'today:Heutige Rezepte anzeigen'
+        'shopping:Einkaufsliste verwalten'
+        'status:Status anzeigen'
+        'login:Bei Cookidoo einloggen'
+        'completion:Shell-Completion ausgeben'
+    )
+
+    plan_cmds=(
+        'show:Wochenplan anzeigen'
+        'sync:Wochenplan synchronisieren'
+        'add:Rezept hinzufügen'
+        'remove:Rezept entfernen'
+        'move:Rezept verschieben'
+    )
+
+    shopping_cmds=(
+        'show:Einkaufsliste anzeigen'
+        'add:Rezepte hinzufügen'
+        'from-plan:Aus Wochenplan hinzufügen'
+        'remove:Rezept entfernen'
+        'clear:Liste leeren'
+    )
+
+    _arguments -C \\
+        '1: :->command' \\
+        '2: :->subcommand' \\
+        '*::arg:->args'
+
+    case "$state" in
+        command)
+            _describe 'command' commands
+            ;;
+        subcommand)
+            case "$words[1]" in
+                plan)
+                    _describe 'plan command' plan_cmds
+                    ;;
+                shopping)
+                    _describe 'shopping command' shopping_cmds
+                    ;;
+                completion)
+                    _values 'shell' bash zsh fish
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_tmx "$@"
+'''
+
+FISH_COMPLETION = '''
+# tmx completions for fish
+
+set -l commands plan search today shopping status login completion
+set -l plan_cmds show sync add remove move
+set -l shopping_cmds show add from-plan remove clear
+
+complete -c tmx -f
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "plan" -d "Wochenplan verwalten"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "search" -d "Rezepte suchen"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "today" -d "Heutige Rezepte"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "shopping" -d "Einkaufsliste"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "status" -d "Status anzeigen"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "login" -d "Einloggen"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "completion" -d "Shell-Completion"
+
+complete -c tmx -n "__fish_seen_subcommand_from plan; and not __fish_seen_subcommand_from $plan_cmds" -a "show" -d "Anzeigen"
+complete -c tmx -n "__fish_seen_subcommand_from plan; and not __fish_seen_subcommand_from $plan_cmds" -a "sync" -d "Synchronisieren"
+complete -c tmx -n "__fish_seen_subcommand_from plan; and not __fish_seen_subcommand_from $plan_cmds" -a "add" -d "Hinzufügen"
+complete -c tmx -n "__fish_seen_subcommand_from plan; and not __fish_seen_subcommand_from $plan_cmds" -a "remove" -d "Entfernen"
+complete -c tmx -n "__fish_seen_subcommand_from plan; and not __fish_seen_subcommand_from $plan_cmds" -a "move" -d "Verschieben"
+
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "show" -d "Anzeigen"
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "add" -d "Hinzufügen"
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "from-plan" -d "Aus Plan"
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "remove" -d "Entfernen"
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "clear" -d "Leeren"
+
+complete -c tmx -n "__fish_seen_subcommand_from completion" -a "bash zsh fish" -d "Shell"
+'''
+
+
+def cmd_completion(args):
+    """Output shell completion script."""
+    shell = args.shell
+    
+    if shell == "bash":
+        print(BASH_COMPLETION.strip())
+    elif shell == "zsh":
+        print(ZSH_COMPLETION.strip())
+    elif shell == "fish":
+        print(FISH_COMPLETION.strip())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CLI Parser
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1381,6 +1521,11 @@ def build_parser():
     login_parser.add_argument("--email", "-e", help="E-Mail-Adresse")
     login_parser.add_argument("--password", "-p", help="Passwort")
     login_parser.set_defaults(func=cmd_login)
+    
+    # completion command
+    completion_parser = sub.add_parser("completion", help="Shell-Completion ausgeben")
+    completion_parser.add_argument("shell", choices=["bash", "zsh", "fish"], help="Shell-Typ")
+    completion_parser.set_defaults(func=cmd_completion)
     
     return parser
 

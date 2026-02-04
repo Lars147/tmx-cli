@@ -121,6 +121,25 @@ tmx shopping clear             # Clear entire shopping list
 tmx status    # Check login status and cache info
 ```
 
+### Shell Completion
+
+Enable tab completion for your shell:
+
+**Bash** (add to `~/.bashrc`):
+```bash
+eval "$(tmx completion bash)"
+```
+
+**Zsh** (add to `~/.zshrc`):
+```bash
+eval "$(tmx completion zsh)"
+```
+
+**Fish** (run once):
+```fish
+tmx completion fish > ~/.config/fish/completions/tmx.fish
+```
+
 ## How It Works
 
 | Component | Technology |
