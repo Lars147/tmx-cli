@@ -857,7 +857,8 @@ def cmd_plan_show(args):
         if recipes:
             for recipe in recipes:
                 title = recipe.get("title", "Unbekannt")
-                print(f"    • {title}")
+                rid = recipe.get("id", "")
+                print(f"    • {title}  [{rid}]")
         else:
             print("    (keine Rezepte)")
         
@@ -949,8 +950,9 @@ def cmd_today(args):
     if recipes:
         for recipe in recipes:
             title = recipe.get("title", "Unbekannt")
+            rid = recipe.get("id", "")
             url = recipe.get("url", "")
-            print(f"  • {title}")
+            print(f"  • {title}  [{rid}]")
             if url:
                 print(f"    {url}")
             print()
@@ -1158,7 +1160,8 @@ def cmd_shopping_show(args):
     # Show recipes in list
     print(f"\n📖 Rezepte ({len(recipes)}):")
     for recipe in recipes:
-        print(f"  • {recipe.get('title')}")
+        rid = recipe.get('id', '')
+        print(f"  • {recipe.get('title')}  [{rid}]")
     
     # Parse and show ingredients
     ingredients = parse_shopping_ingredients(data)
