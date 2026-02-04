@@ -1,0 +1,28 @@
+# Secrets & Session Data (NEVER commit these!)
+cookidoo_cookies.json
+cookidoo_search_token.json
+*.env
+
+# Cache
+cookidoo_weekplan_raw.json
+__pycache__/
+*.pyc
+
+# Debug files
+*.png
+*.html
+debug_*
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
