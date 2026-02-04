@@ -1426,13 +1426,18 @@ def cmd_shopping_from_plan(args):
     days = getattr(args, 'days', 7)
     
     print()
-    print(f"🛒 Füge Rezepte der nächsten {days} Tage zur Einkaufsliste hinzu...")
     
     # Load current plan
     data = load_weekplan()
     if not data:
-        print("❌ Kein Wochenplan gefunden. Führe zuerst 'tmx plan sync' aus.")
-        return
+        print("📅 Kein Wochenplan gefunden. Synchronisiere...")
+        print()
+        cmd_plan_sync(args)
+        data = load_weekplan()
+        if not data:
+            return
+    
+    print(f"🛒 Füge Rezepte der nächsten {days} Tage zur Einkaufsliste hinzu...")
     
     # Collect recipe IDs from plan
     recipe_ids = []
