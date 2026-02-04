@@ -817,8 +817,7 @@ def cmd_plan_show(args):
     
     if not data:
         print("📅 Kein Wochenplan gefunden. Synchronisiere...")
-        print()
-        cmd_plan_sync(args)
+        cmd_plan_sync(args, quiet=True)
         data = load_weekplan()
         if not data:
             return
@@ -874,14 +873,15 @@ def cmd_plan_show(args):
     print()
 
 
-def cmd_plan_sync(args):
+def cmd_plan_sync(args, quiet=False):
     """Sync weekplan from Cookidoo via HTTP."""
     since = getattr(args, 'since', None) or dt.date.today().isoformat()
     days_count = getattr(args, 'days', 14)
     
-    print()
-    print(f"🔄 Synchronisiere Wochenplan ({days_count} Tage ab {since})...")
-    print()
+    if not quiet:
+        print()
+        print(f"🔄 Synchronisiere Wochenplan ({days_count} Tage ab {since})...")
+        print()
     
     cookies = load_cookies()
     if not is_authenticated(cookies):
@@ -916,11 +916,14 @@ def cmd_plan_sync(args):
     days = data.get("weekplan", {}).get("days", [])
     recipe_count = sum(len(d.get("recipes", [])) for d in days)
     
-    print()
-    print(f"✅ {len(days)} Tage mit {recipe_count} Rezepten synchronisiert!")
-    print()
-    
-    cmd_plan_show(args)
+    if not quiet:
+        print()
+        print(f"✅ {len(days)} Tage mit {recipe_count} Rezepten synchronisiert!")
+        print()
+        cmd_plan_show(args)
+    else:
+        print(f"✅ Wochenplan synchronisiert ({len(days)} Tage, {recipe_count} Rezepte)")
+        print()
 
 
 def cmd_today(args):
@@ -929,8 +932,7 @@ def cmd_today(args):
     
     if not data:
         print("📅 Kein Wochenplan gefunden. Synchronisiere...")
-        print()
-        cmd_plan_sync(args)
+        cmd_plan_sync(args, quiet=True)
         data = load_weekplan()
         if not data:
             return
@@ -1431,8 +1433,7 @@ def cmd_shopping_from_plan(args):
     data = load_weekplan()
     if not data:
         print("📅 Kein Wochenplan gefunden. Synchronisiere...")
-        print()
-        cmd_plan_sync(args)
+        cmd_plan_sync(args, quiet=True)
         data = load_weekplan()
         if not data:
             return
