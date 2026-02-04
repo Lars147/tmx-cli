@@ -928,8 +928,12 @@ def cmd_today(args):
     data = load_weekplan()
     
     if not data:
-        print("❌ Kein Wochenplan gefunden. Führe zuerst 'tmx plan sync' aus.")
-        return
+        print("📅 Kein Wochenplan gefunden. Synchronisiere...")
+        print()
+        cmd_plan_sync(args)
+        data = load_weekplan()
+        if not data:
+            return
     
     days = data.get("weekplan", {}).get("days", [])
     today_str = dt.date.today().isoformat()
