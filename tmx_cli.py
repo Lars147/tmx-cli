@@ -42,8 +42,8 @@ ALGOLIA_APP_ID = "3TA8NT85XJ"
 ALGOLIA_INDEX = "recipes-production-de"
 SEARCH_TOKEN_FILE = SCRIPT_DIR / "cookidoo_search_token.json"
 
-# Recipe Categories (ID -> German name)
-CATEGORIES = {
+# Recipe Categories (ID -> German name) - Hardcoded fallback
+CATEGORIES_FALLBACK = {
     "vorspeisen": "VrkNavCategory-RPF-001",
     "suppen": "VrkNavCategory-RPF-002",
     "pasta": "VrkNavCategory-RPF-003",
@@ -60,6 +60,176 @@ CATEGORIES = {
     "saucen": "VrkNavCategory-RPF-018",
     "snacks": "VrkNavCategory-RPF-020",
 }
+CATEGORIES_CACHE_FILE = SCRIPT_DIR / "cookidoo_categories.json"
+
+
+def load_categories() -> tuple[dict[str, str], bool]:
+    """
+    Load categories from cache file or fallback to hardcoded.
+    Returns (categories_dict, from_cache).
+    """
+    if CATEGORIES_CACHE_FILE.exists():
+        try:
+            with open(CATEGORIES_CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            categories = data.get("categories", {})
+            if categories:
+                return categories, True
+        except (json.JSONDecodeError, KeyError):
+            pass
+    return CATEGORIES_FALLBACK, False
+
+
+def get_category_facets(api_key: str) -> list[str]:
+    """Get all category IDs from Algolia facets."""
+    url = f"https://{ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/{ALGOLIA_INDEX}/query"
+    
+    search_params = {
+        "query": "",
+        "hitsPerPage": 0,
+        "facets": ["categories.id"],
+    }
+    
+    query_data = json.dumps(search_params).encode("utf-8")
+    
+    headers = {
+        "X-Algolia-Application-Id": ALGOLIA_APP_ID,
+        "X-Algolia-API-Key": api_key,
+        "Content-Type": "application/json",
+    }
+    
+    ctx = ssl.create_default_context()
+    req = urllib.request.Request(url, data=query_data, headers=headers, method="POST")
+    
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+    except Exception as e:
+        print(f"  ❌ Facets-Abfrage fehlgeschlagen: {e}")
+        return []
+    
+    facets = data.get("facets", {}).get("categories.id", {})
+    return list(facets.keys())
+
+
+def search_one_recipe_by_category(api_key: str, category_id: str) -> Optional[str]:
+    """Search for one recipe in a category, return recipe ID."""
+    url = f"https://{ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/{ALGOLIA_INDEX}/query"
+    
+    search_params = {
+        "query": "",
+        "hitsPerPage": 1,
+        "filters": f"categories.id:{category_id}",
+    }
+    
+    query_data = json.dumps(search_params).encode("utf-8")
+    
+    headers = {
+        "X-Algolia-Application-Id": ALGOLIA_APP_ID,
+        "X-Algolia-API-Key": api_key,
+        "Content-Type": "application/json",
+    }
+    
+    ctx = ssl.create_default_context()
+    req = urllib.request.Request(url, data=query_data, headers=headers, method="POST")
+    
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+    except Exception:
+        return None
+    
+    hits = data.get("hits", [])
+    if hits:
+        return hits[0].get("id")
+    return None
+
+
+def extract_category_name(recipe_data: dict, category_id: str) -> Optional[str]:
+    """Extract category name from recipe data by matching category ID."""
+    categories = recipe_data.get("categories", [])
+    for cat in categories:
+        if cat.get("id") == category_id:
+            return cat.get("title")
+    return None
+
+
+def sync_categories(progress_callback=None) -> tuple[dict[str, str], list[str]]:
+    """
+    Sync categories from Cookidoo by:
+    1. Getting all category IDs from Algolia facets
+    2. For each category: search 1 recipe, get details, extract category name
+    3. Save mapping to JSON file
+    
+    Returns (categories_dict, errors_list).
+    """
+    cookies = load_cookies()
+    if not is_authenticated(cookies):
+        return {}, ["Nicht eingeloggt"]
+    
+    api_key = get_search_token(cookies)
+    if not api_key:
+        return {}, ["Konnte Such-Token nicht abrufen"]
+    
+    # Get all category IDs
+    if progress_callback:
+        progress_callback("Hole Kategorie-IDs aus Algolia...")
+    
+    category_ids = get_category_facets(api_key)
+    if not category_ids:
+        return {}, ["Keine Kategorien gefunden"]
+    
+    if progress_callback:
+        progress_callback(f"Gefunden: {len(category_ids)} Kategorien")
+    
+    categories = {}
+    errors = []
+    
+    for i, cat_id in enumerate(category_ids, 1):
+        if progress_callback:
+            progress_callback(f"[{i}/{len(category_ids)}] {cat_id}...")
+        
+        # Search for one recipe in this category
+        recipe_id = search_one_recipe_by_category(api_key, cat_id)
+        if not recipe_id:
+            errors.append(f"{cat_id}: Kein Rezept gefunden")
+            continue
+        
+        # Get recipe details
+        recipe_data = get_recipe_details(recipe_id)
+        if not recipe_data or "error" in recipe_data:
+            errors.append(f"{cat_id}: Rezeptdetails nicht abrufbar")
+            continue
+        
+        # Extract category name
+        cat_name = extract_category_name(recipe_data, cat_id)
+        if not cat_name:
+            errors.append(f"{cat_id}: Kategorie-Name nicht gefunden")
+            continue
+        
+        # Create URL-friendly key
+        cat_key = cat_name.lower().replace(" ", "-").replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+        cat_key = re.sub(r'[^a-z0-9-]', '', cat_key)
+        
+        categories[cat_key] = cat_id
+        
+        if progress_callback:
+            progress_callback(f"  → {cat_name} ({cat_key})")
+    
+    # Save to cache file
+    if categories:
+        cache_data = {
+            "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "categories": categories,
+        }
+        with open(CATEGORIES_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache_data, f, ensure_ascii=False, indent=2)
+    
+    return categories, errors
+
+
+# Alias for backward compatibility
+CATEGORIES, _ = load_categories()
 CATEGORY_NAMES = {v: k for k, v in CATEGORIES.items()}  # Reverse lookup
 
 
@@ -1358,17 +1528,75 @@ def cmd_recipe(args):
         print()
 
 
-def cmd_categories(args):
+def cmd_categories_show(args):
     """List available recipe categories."""
+    categories, from_cache = load_categories()
+    
     print()
     print("📂 Verfügbare Kategorien")
     print("─" * 40)
+    
+    if from_cache:
+        # Load timestamp from cache
+        try:
+            with open(CATEGORIES_CACHE_FILE, "r", encoding="utf-8") as f:
+                cache_data = json.load(f)
+            ts = cache_data.get("timestamp", "")[:16].replace("T", " ")
+            print(f"  (aus Cache, Stand: {ts} UTC)")
+        except:
+            print("  (aus Cache)")
+    else:
+        print("  (hardcodiert – führe 'tmx categories sync' für aktuelle Liste aus)")
+    
     print()
-    for name in sorted(CATEGORIES.keys()):
+    for name in sorted(categories.keys()):
         print(f"  • {name}")
+    print()
+    print(f"Insgesamt: {len(categories)} Kategorien")
     print()
     print("Verwendung: tmx search \"\" --category <name>")
     print()
+
+
+def cmd_categories_sync(args):
+    """Sync categories from Cookidoo."""
+    print()
+    print("🔄 Synchronisiere Kategorien von Cookidoo...")
+    print("─" * 50)
+    print()
+    
+    def progress(msg):
+        print(f"  {msg}")
+    
+    categories, errors = sync_categories(progress_callback=progress)
+    
+    print()
+    if categories:
+        print(f"✅ {len(categories)} Kategorien synchronisiert!")
+        print(f"   Gespeichert in: {CATEGORIES_CACHE_FILE}")
+        
+        # Reload global CATEGORIES
+        global CATEGORIES, CATEGORY_NAMES
+        CATEGORIES = categories
+        CATEGORY_NAMES = {v: k for k, v in CATEGORIES.items()}
+    else:
+        print("❌ Keine Kategorien synchronisiert.")
+    
+    if errors:
+        print()
+        print(f"⚠️  {len(errors)} Fehler:")
+        for err in errors[:5]:  # Show max 5 errors
+            print(f"   • {err}")
+        if len(errors) > 5:
+            print(f"   ... und {len(errors) - 5} weitere")
+    
+    print()
+
+
+# Backward compatibility alias
+def cmd_categories(args):
+    """Alias for categories show (backward compatibility)."""
+    cmd_categories_show(args)
 
 
 def cmd_favorites(args):
@@ -1896,6 +2124,7 @@ _tmx_completion() {
     local plan_cmds="show sync add remove move"
     local shopping_cmds="show add add-item from-plan remove clear export"
     local cache_cmds="clear"
+    local categories_cmds="show sync"
 
     # Get the main command and subcommand
     local cmd="" subcmd=""
@@ -1934,6 +2163,7 @@ _tmx_completion() {
                     clear) COMPREPLY=($(compgen -W "--all -a --help" -- "${cur}")) ;;
                     *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
                 esac ;;
+            categories) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
             login) COMPREPLY=($(compgen -W "--email -e --password -p --help" -- "${cur}")) ;;
             *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
         esac
@@ -1956,6 +2186,7 @@ _tmx_completion() {
                     plan) COMPREPLY=($(compgen -W "${plan_cmds}" -- "${cur}")) ;;
                     shopping) COMPREPLY=($(compgen -W "${shopping_cmds}" -- "${cur}")) ;;
                     cache) COMPREPLY=($(compgen -W "${cache_cmds}" -- "${cur}")) ;;
+                    categories) COMPREPLY=($(compgen -W "${categories_cmds}" -- "${cur}")) ;;
                     completion) COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}")) ;;
                 esac
             fi
@@ -1984,7 +2215,7 @@ _tmx() {
                 'plan:Wochenplan verwalten'
                 'search:Rezepte in Cookidoo suchen'
                 'recipe:Rezeptdetails anzeigen'
-                'categories:Kategorien anzeigen'
+                'categories:Kategorien verwalten'
                 'favorites:Gespeicherte Favoriten anzeigen'
                 'today:Heutige Rezepte anzeigen'
                 'shopping:Einkaufsliste verwalten'
@@ -2034,6 +2265,19 @@ _tmx() {
                             ;;
                     esac
                     ;;
+                categories)
+                    _arguments -C '1: :->cat_cmd' '*:: :->cat_args'
+                    case "$state" in
+                        cat_cmd)
+                            local -a cat_cmds
+                            cat_cmds=(
+                                'show:Kategorien anzeigen'
+                                'sync:Kategorien von Cookidoo synchronisieren'
+                            )
+                            _describe 'categories command' cat_cmds
+                            ;;
+                    esac
+                    ;;
                 cache)
                     _arguments -C '1: :->cache_cmd' '*:: :->cache_args'
                     case "$state" in
@@ -2076,12 +2320,13 @@ set -l commands plan search recipe categories favorites today shopping status ca
 set -l plan_cmds show sync add remove move
 set -l shopping_cmds show add add-item from-plan remove clear export
 set -l cache_cmds clear
+set -l categories_cmds show sync
 
 complete -c tmx -f
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "plan" -d "Wochenplan verwalten"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "search" -d "Rezepte suchen"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "recipe" -d "Rezeptdetails"
-complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "categories" -d "Kategorien"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "categories" -d "Kategorien verwalten"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "favorites" -d "Favoriten"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "today" -d "Heutige Rezepte"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "shopping" -d "Einkaufsliste"
@@ -2102,6 +2347,10 @@ complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand
 complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from remove" -l date -s d -d "Datum"
 complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from move" -l from -s f -d "Von Datum"
 complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from move" -l to -s t -d "Nach Datum"
+
+# categories subcommands
+complete -c tmx -n "__fish_seen_subcommand_from categories; and not __fish_seen_subcommand_from $categories_cmds" -a "show" -d "Kategorien anzeigen"
+complete -c tmx -n "__fish_seen_subcommand_from categories; and not __fish_seen_subcommand_from $categories_cmds" -a "sync" -d "Von Cookidoo synchronisieren"
 
 # shopping subcommands and options
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "show" -d "Anzeigen"
@@ -2215,9 +2464,18 @@ def build_parser():
     recipe_parser.add_argument("recipe_id", help="Rezept-ID (z.B. r130616)")
     recipe_parser.set_defaults(func=cmd_recipe)
     
-    # categories command
-    categories_parser = sub.add_parser("categories", help="Verfügbare Kategorien anzeigen")
-    categories_parser.set_defaults(func=cmd_categories)
+    # categories command with subcommands
+    categories_parser = sub.add_parser("categories", help="Kategorien verwalten")
+    categories_sub = categories_parser.add_subparsers(dest="categories_action")
+    
+    categories_show = categories_sub.add_parser("show", help="Kategorien anzeigen")
+    categories_show.set_defaults(func=cmd_categories_show)
+    
+    categories_sync = categories_sub.add_parser("sync", help="Kategorien von Cookidoo synchronisieren")
+    categories_sync.set_defaults(func=cmd_categories_sync)
+    
+    # Default action for 'categories' without subcommand
+    categories_parser.set_defaults(func=cmd_categories_show)
     
     # favorites command
     favorites_parser = sub.add_parser("favorites", help="Gespeicherte Favoriten anzeigen")

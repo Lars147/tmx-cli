@@ -104,8 +104,13 @@ tmx search "Kuchen" --difficulty easy  # Easy recipes only
 tmx search "Suppe" --tm TM6            # TM6 recipes only
 tmx search "" --category vegetarisch   # Browse by category
 tmx search "Pasta" -t 30 -d easy       # Combine filters
+```
 
-tmx categories                         # List all categories
+### Categories
+```bash
+tmx categories                         # List all categories (from cache or hardcoded)
+tmx categories show                    # Same as above
+tmx categories sync                    # Sync categories from Cookidoo (fetches all category names)
 ```
 
 ### Recipe Details
@@ -189,7 +194,8 @@ tmx completion fish > ~/.config/fish/completions/tmx.fish
 ~/.tmx-cli/           # or current directory
 ├── cookidoo_cookies.json       # Session (auto-created)
 ├── cookidoo_search_token.json  # Search token (auto-created)
-└── cookidoo_weekplan_raw.json  # Cached plan
+├── cookidoo_weekplan_raw.json  # Cached plan
+└── cookidoo_categories.json    # Synced categories (created by 'categories sync')
 ```
 
 ## Disclaimer
