@@ -815,8 +815,12 @@ def cmd_plan_show(args):
     data = load_weekplan()
     
     if not data:
-        print("❌ Kein Wochenplan gefunden. Führe zuerst 'tmx plan sync' aus.")
-        return
+        print("📅 Kein Wochenplan gefunden. Synchronisiere...")
+        print()
+        cmd_plan_sync(args)
+        data = load_weekplan()
+        if not data:
+            return
     
     if "error" in data:
         print(f"❌ {data['error']}")
