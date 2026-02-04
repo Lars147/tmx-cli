@@ -17,6 +17,7 @@ import getpass
 import json
 import re
 import ssl
+import sys
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -1317,6 +1318,105 @@ def cmd_shopping_clear(args):
     print()
 
 
+def cmd_shopping_export(args):
+    """Export shopping list to various formats."""
+    fmt = getattr(args, 'format', 'text')
+    by_recipe = getattr(args, 'by_recipe', False)
+    output_file = getattr(args, 'output', None)
+    
+    data = get_shopping_list()
+    if not data:
+        print("❌ Konnte Einkaufsliste nicht laden.", file=sys.stderr)
+        return
+    
+    recipes = data.get("recipes", [])
+    if not recipes and not data.get("additionalItems"):
+        print("❌ Einkaufsliste ist leer.", file=sys.stderr)
+        return
+    
+    lines = []
+    
+    if fmt == "json":
+        import json as json_module
+        output = json_module.dumps(data, indent=2, ensure_ascii=False)
+    elif fmt == "markdown":
+        if by_recipe:
+            for recipe in recipes:
+                title = recipe.get('title', 'Unbekannt')
+                rid = recipe.get('id', '')
+                lines.append(f"## {title} [{rid}]")
+                lines.append("")
+                for ing in recipe.get("recipeIngredientGroups", []):
+                    name = ing.get("ingredientNotation", "")
+                    qty = ing.get("quantity", {}).get("value", 0)
+                    unit = ing.get("unitNotation", "")
+                    qty_str = str(int(qty)) if qty == int(qty) else f"{qty:.1f}"
+                    is_owned = ing.get("isOwned", False)
+                    check = "x" if is_owned else " "
+                    lines.append(f"- [{check}] {qty_str} {unit} {name}")
+                lines.append("")
+        else:
+            ingredients = parse_shopping_ingredients(data)
+            lines.append("# Einkaufsliste")
+            lines.append("")
+            for ing in ingredients:
+                if ing["is_owned"]:
+                    continue
+                qty = ing["quantity"]
+                qty_str = str(int(qty)) if qty == int(qty) else f"{qty:.1f}"
+                lines.append(f"- [ ] {qty_str} {ing['unit']} {ing['name']}")
+        
+        # Additional items
+        additional = data.get("additionalItems", [])
+        if additional:
+            lines.append("")
+            lines.append("## Sonstiges")
+            lines.append("")
+            for item in additional:
+                check = "x" if item.get("isOwned", False) else " "
+                lines.append(f"- [{check}] {item.get('name', '')}")
+        
+        output = "\n".join(lines)
+    else:  # text
+        if by_recipe:
+            for recipe in recipes:
+                title = recipe.get('title', 'Unbekannt')
+                lines.append(f"=== {title} ===")
+                for ing in recipe.get("recipeIngredientGroups", []):
+                    name = ing.get("ingredientNotation", "")
+                    qty = ing.get("quantity", {}).get("value", 0)
+                    unit = ing.get("unitNotation", "")
+                    qty_str = str(int(qty)) if qty == int(qty) else f"{qty:.1f}"
+                    lines.append(f"  {qty_str} {unit} {name}")
+                lines.append("")
+        else:
+            ingredients = parse_shopping_ingredients(data)
+            for ing in ingredients:
+                if ing["is_owned"]:
+                    continue
+                qty = ing["quantity"]
+                qty_str = str(int(qty)) if qty == int(qty) else f"{qty:.1f}"
+                lines.append(f"{qty_str} {ing['unit']} {ing['name']}")
+        
+        # Additional items
+        additional = data.get("additionalItems", [])
+        if additional:
+            lines.append("")
+            lines.append("--- Sonstiges ---")
+            for item in additional:
+                lines.append(f"  {item.get('name', '')}")
+        
+        output = "\n".join(lines)
+    
+    # Output
+    if output_file:
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(output)
+        print(f"✅ Exportiert nach: {output_file}", file=sys.stderr)
+    else:
+        print(output)
+
+
 def cmd_shopping_from_plan(args):
     """Add all recipes from the current plan to the shopping list."""
     days = getattr(args, 'days', 7)
@@ -1376,7 +1476,7 @@ _tmx_completion() {
 
     local commands="plan search today shopping status cache login completion"
     local plan_cmds="show sync add remove move"
-    local shopping_cmds="show add from-plan remove clear"
+    local shopping_cmds="show add from-plan remove clear export"
     local cache_cmds="clear"
 
     case "${cword}" in
@@ -1436,6 +1536,7 @@ _tmx() {
         'from-plan:Aus Wochenplan hinzufügen'
         'remove:Rezept entfernen'
         'clear:Liste leeren'
+        'export:Exportieren'
     )
 
     cache_cmds=(
@@ -1478,7 +1579,7 @@ FISH_COMPLETION = '''
 
 set -l commands plan search today shopping status cache login completion
 set -l plan_cmds show sync add remove move
-set -l shopping_cmds show add from-plan remove clear
+set -l shopping_cmds show add from-plan remove clear export
 set -l cache_cmds clear
 
 complete -c tmx -f
@@ -1502,6 +1603,7 @@ complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_su
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "from-plan" -d "Aus Plan"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "remove" -d "Entfernen"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "clear" -d "Leeren"
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "export" -d "Exportieren"
 
 complete -c tmx -n "__fish_seen_subcommand_from cache; and not __fish_seen_subcommand_from $cache_cmds" -a "clear" -d "Löschen"
 
@@ -1604,6 +1706,12 @@ def build_parser():
     
     shopping_clear = shopping_sub.add_parser("clear", help="Einkaufsliste leeren")
     shopping_clear.set_defaults(func=cmd_shopping_clear)
+    
+    shopping_export = shopping_sub.add_parser("export", help="Einkaufsliste exportieren")
+    shopping_export.add_argument("--format", "-f", choices=["text", "markdown", "json"], default="text", help="Format (default: text)")
+    shopping_export.add_argument("--by-recipe", "-r", action="store_true", help="Nach Rezept gruppieren")
+    shopping_export.add_argument("--output", "-o", help="Ausgabedatei (sonst stdout)")
+    shopping_export.set_defaults(func=cmd_shopping_export)
     
     # status command
     status_parser = sub.add_parser("status", help="Status anzeigen")

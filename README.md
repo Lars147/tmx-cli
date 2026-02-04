@@ -121,6 +121,12 @@ tmx shopping from-plan         # Add all recipes from plan (7 days)
 tmx shopping from-plan -d 14   # Add recipes from next 14 days
 tmx shopping remove r130616    # Remove recipe from shopping list
 tmx shopping clear             # Clear entire shopping list
+
+# Export shopping list
+tmx shopping export                      # Plain text to stdout
+tmx shopping export -f markdown          # Markdown with checkboxes
+tmx shopping export -f markdown -r       # Grouped by recipe
+tmx shopping export -f json -o list.json # JSON to file
 ```
 
 ### Status & Cache
