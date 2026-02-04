@@ -1382,7 +1382,7 @@ _tmx() {
     esac
 }
 
-_tmx "$@"
+compdef _tmx tmx
 '''
 
 FISH_COMPLETION = '''
