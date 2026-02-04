@@ -1041,6 +1041,40 @@ def cmd_status(args):
     print()
 
 
+def cmd_cache_clear(args):
+    """Clear cached data files."""
+    import os
+    
+    files = [
+        ("Wochenplan", WEEKPLAN_JSON),
+        ("Such-Token", SEARCH_TOKEN_FILE),
+    ]
+    
+    # Optional: also clear cookies
+    if getattr(args, 'all', False):
+        files.append(("Session-Cookies", COOKIES_FILE))
+    
+    print()
+    print("🗑️  Cache löschen")
+    print("─" * 40)
+    
+    deleted = 0
+    for name, path in files:
+        if path.exists():
+            os.remove(path)
+            print(f"  ✅ {name} gelöscht")
+            deleted += 1
+        else:
+            print(f"  ⏭️  {name} (nicht vorhanden)")
+    
+    print()
+    if deleted:
+        print(f"✅ {deleted} Datei(en) gelöscht.")
+    else:
+        print("ℹ️  Nichts zu löschen.")
+    print()
+
+
 def cmd_login(args):
     """Login to Cookidoo interactively."""
     print()
@@ -1302,9 +1336,10 @@ _tmx_completion() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="plan search today shopping status login completion"
+    local commands="plan search today shopping status cache login completion"
     local plan_cmds="show sync add remove move"
     local shopping_cmds="show add from-plan remove clear"
+    local cache_cmds="clear"
 
     case "${cword}" in
         1)
@@ -1317,6 +1352,9 @@ _tmx_completion() {
                     ;;
                 shopping)
                     COMPREPLY=($(compgen -W "${shopping_cmds}" -- "${cur}"))
+                    ;;
+                cache)
+                    COMPREPLY=($(compgen -W "${cache_cmds}" -- "${cur}"))
                     ;;
                 completion)
                     COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}"))
@@ -1333,7 +1371,7 @@ ZSH_COMPLETION = '''
 #compdef tmx
 
 _tmx() {
-    local -a commands plan_cmds shopping_cmds
+    local -a commands plan_cmds shopping_cmds cache_cmds
 
     commands=(
         'plan:Wochenplan verwalten'
@@ -1341,6 +1379,7 @@ _tmx() {
         'today:Heutige Rezepte anzeigen'
         'shopping:Einkaufsliste verwalten'
         'status:Status anzeigen'
+        'cache:Cache verwalten'
         'login:Bei Cookidoo einloggen'
         'completion:Shell-Completion ausgeben'
     )
@@ -1361,6 +1400,10 @@ _tmx() {
         'clear:Liste leeren'
     )
 
+    cache_cmds=(
+        'clear:Cache löschen'
+    )
+
     _arguments -C \\
         '1: :->command' \\
         '2: :->subcommand' \\
@@ -1378,6 +1421,9 @@ _tmx() {
                 shopping)
                     _describe 'shopping command' shopping_cmds
                     ;;
+                cache)
+                    _describe 'cache command' cache_cmds
+                    ;;
                 completion)
                     _values 'shell' bash zsh fish
                     ;;
@@ -1392,9 +1438,10 @@ compdef _tmx tmx
 FISH_COMPLETION = '''
 # tmx completions for fish
 
-set -l commands plan search today shopping status login completion
+set -l commands plan search today shopping status cache login completion
 set -l plan_cmds show sync add remove move
 set -l shopping_cmds show add from-plan remove clear
+set -l cache_cmds clear
 
 complete -c tmx -f
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "plan" -d "Wochenplan verwalten"
@@ -1402,6 +1449,7 @@ complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "search" -d "R
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "today" -d "Heutige Rezepte"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "shopping" -d "Einkaufsliste"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "status" -d "Status anzeigen"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "cache" -d "Cache verwalten"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "login" -d "Einloggen"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "completion" -d "Shell-Completion"
 
@@ -1416,6 +1464,8 @@ complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_su
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "from-plan" -d "Aus Plan"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "remove" -d "Entfernen"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "clear" -d "Leeren"
+
+complete -c tmx -n "__fish_seen_subcommand_from cache; and not __fish_seen_subcommand_from $cache_cmds" -a "clear" -d "Löschen"
 
 complete -c tmx -n "__fish_seen_subcommand_from completion" -a "bash zsh fish" -d "Shell"
 '''
@@ -1519,6 +1569,14 @@ def build_parser():
     # status command
     status_parser = sub.add_parser("status", help="Status anzeigen")
     status_parser.set_defaults(func=cmd_status)
+    
+    # cache command
+    cache_parser = sub.add_parser("cache", help="Cache verwalten")
+    cache_sub = cache_parser.add_subparsers(dest="cache_action", required=True)
+    
+    cache_clear = cache_sub.add_parser("clear", help="Cache löschen")
+    cache_clear.add_argument("--all", "-a", action="store_true", help="Auch Session-Cookies löschen")
+    cache_clear.set_defaults(func=cmd_cache_clear)
     
     # login command
     login_parser = sub.add_parser("login", help="Bei Cookidoo einloggen")
