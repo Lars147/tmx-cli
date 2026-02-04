@@ -48,6 +48,9 @@ uvx --from git+https://github.com/Lars147/tmx-cli tmx --help
 # Or install globally
 uv tool install git+https://github.com/Lars147/tmx-cli
 tmx --help
+
+# Upgrade to latest version
+uv tool install --upgrade git+https://github.com/Lars147/tmx-cli
 ```
 
 ### Option 2: pipx
@@ -55,6 +58,9 @@ tmx --help
 ```bash
 pipx install git+https://github.com/Lars147/tmx-cli
 tmx --help
+
+# Upgrade to latest version
+pipx install --force git+https://github.com/Lars147/tmx-cli
 ```
 
 ### Option 3: Clone repository
