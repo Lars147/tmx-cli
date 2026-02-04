@@ -624,6 +624,122 @@ def move_recipe_in_plan(recipe_id: str, from_date: str, to_date: str) -> tuple[b
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Shopping List
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_shopping_list() -> Optional[dict]:
+    """Get the current shopping list from Cookidoo."""
+    cookies = load_cookies()
+    if not is_authenticated(cookies):
+        return None
+    
+    url = f"{COOKIDOO_BASE}/shopping/{LOCALE}"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        "Cookie": format_cookie_header(cookies),
+        "Accept": "application/json",
+    }
+    
+    ctx = ssl.create_default_context()
+    req = urllib.request.Request(url, headers=headers)
+    
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            return json.loads(resp.read().decode())
+    except:
+        return None
+
+
+def add_recipes_to_shopping_list(recipe_ids: list[str]) -> tuple[bool, str]:
+    """Add recipes to the shopping list."""
+    cookies = load_cookies()
+    if not is_authenticated(cookies):
+        return False, "Nicht eingeloggt"
+    
+    url = f"{COOKIDOO_BASE}/shopping/{LOCALE}/add-recipes"
+    
+    data = json.dumps({"recipeIDs": recipe_ids}).encode("utf-8")
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        "Cookie": format_cookie_header(cookies),
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Origin": COOKIDOO_BASE,
+    }
+    
+    ctx = ssl.create_default_context()
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            result = json.loads(resp.read().decode())
+            return True, result.get("message", f"{len(recipe_ids)} Rezept(e) hinzugefügt")
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code}"
+    except Exception as e:
+        return False, str(e)
+
+
+def parse_shopping_ingredients(shopping_data: dict) -> list[dict]:
+    """Parse shopping list data into a flat ingredient list."""
+    ingredients = []
+    seen = set()  # To avoid duplicates
+    
+    for recipe in shopping_data.get("recipes", []):
+        recipe_title = recipe.get("title", "Unbekannt")
+        
+        for ing in recipe.get("recipeIngredientGroups", []):
+            name = ing.get("ingredientNotation", "")
+            quantity = ing.get("quantity", {}).get("value", 0)
+            unit = ing.get("unitNotation", "")
+            preparation = ing.get("preparation", "")
+            is_owned = ing.get("isOwned", False)
+            optional = ing.get("optional", False)
+            category = ing.get("shoppingCategory_ref", "")
+            
+            # Create unique key for deduplication
+            key = f"{name}_{unit}"
+            
+            if key in seen:
+                # Aggregate quantities for same ingredient
+                for existing in ingredients:
+                    if existing["name"] == name and existing["unit"] == unit:
+                        existing["quantity"] += quantity
+                        if recipe_title not in existing["recipes"]:
+                            existing["recipes"].append(recipe_title)
+                        break
+            else:
+                seen.add(key)
+                ingredients.append({
+                    "name": name,
+                    "quantity": quantity,
+                    "unit": unit,
+                    "preparation": preparation,
+                    "is_owned": is_owned,
+                    "optional": optional,
+                    "category": category,
+                    "recipes": [recipe_title],
+                })
+    
+    # Add additional items (manually added)
+    for item in shopping_data.get("additionalItems", []):
+        ingredients.append({
+            "name": item.get("name", ""),
+            "quantity": 1,
+            "unit": "",
+            "preparation": "",
+            "is_owned": item.get("isOwned", False),
+            "optional": False,
+            "category": "manual",
+            "recipes": ["Manuell hinzugefügt"],
+        })
+    
+    return ingredients
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Storage
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -970,6 +1086,127 @@ def cmd_plan_move(args):
     print()
 
 
+def cmd_shopping_show(args):
+    """Show the current shopping list."""
+    print()
+    print("🛒 Einkaufsliste")
+    print("─" * 50)
+    
+    data = get_shopping_list()
+    if not data:
+        print("❌ Konnte Einkaufsliste nicht laden.")
+        return
+    
+    recipes = data.get("recipes", [])
+    if not recipes and not data.get("additionalItems"):
+        print("Die Einkaufsliste ist leer.")
+        print()
+        print("Rezepte hinzufügen:")
+        print("  tmx shopping add r123456")
+        print("  tmx shopping from-plan")
+        return
+    
+    # Show recipes in list
+    print(f"\n📖 Rezepte ({len(recipes)}):")
+    for recipe in recipes:
+        print(f"  • {recipe.get('title')}")
+    
+    # Parse and show ingredients
+    ingredients = parse_shopping_ingredients(data)
+    
+    if ingredients:
+        print(f"\n🥕 Zutaten ({len(ingredients)}):")
+        print()
+        
+        # Group by owned status
+        needed = [i for i in ingredients if not i["is_owned"]]
+        owned = [i for i in ingredients if i["is_owned"]]
+        
+        for ing in needed:
+            qty = ing["quantity"]
+            unit = ing["unit"]
+            name = ing["name"]
+            prep = f" ({ing['preparation']})" if ing["preparation"] else ""
+            opt = " (optional)" if ing["optional"] else ""
+            
+            # Format quantity nicely
+            if qty == int(qty):
+                qty_str = str(int(qty))
+            else:
+                qty_str = f"{qty:.1f}"
+            
+            print(f"  [ ] {qty_str} {unit} {name}{prep}{opt}")
+        
+        if owned:
+            print(f"\n  ✓ {len(owned)} Zutaten bereits vorhanden")
+    
+    print()
+
+
+def cmd_shopping_add(args):
+    """Add recipes to the shopping list."""
+    recipe_ids = args.recipe_ids
+    
+    print()
+    print(f"🛒 Füge {len(recipe_ids)} Rezept(e) zur Einkaufsliste hinzu...")
+    
+    success, message = add_recipes_to_shopping_list(recipe_ids)
+    
+    if success:
+        print(f"✅ {message}")
+    else:
+        print(f"❌ {message}")
+    print()
+
+
+def cmd_shopping_from_plan(args):
+    """Add all recipes from the current plan to the shopping list."""
+    days = getattr(args, 'days', 7)
+    
+    print()
+    print(f"🛒 Füge Rezepte der nächsten {days} Tage zur Einkaufsliste hinzu...")
+    
+    # Load current plan
+    data = load_weekplan()
+    if not data:
+        print("❌ Kein Wochenplan gefunden. Führe zuerst 'tmx plan sync' aus.")
+        return
+    
+    # Collect recipe IDs from plan
+    recipe_ids = []
+    today = dt.date.today()
+    end_date = today + dt.timedelta(days=days)
+    
+    for day in data.get("weekplan", {}).get("days", []):
+        date_str = day.get("date", "")
+        try:
+            day_date = dt.date.fromisoformat(date_str)
+            if today <= day_date < end_date:
+                for recipe in day.get("recipes", []):
+                    rid = recipe.get("id")
+                    if rid and rid not in recipe_ids:
+                        recipe_ids.append(rid)
+        except:
+            continue
+    
+    if not recipe_ids:
+        print("Keine Rezepte im Plan für die nächsten Tage gefunden.")
+        return
+    
+    print(f"  → {len(recipe_ids)} Rezepte gefunden")
+    
+    success, message = add_recipes_to_shopping_list(recipe_ids)
+    
+    if success:
+        print(f"✅ {message}")
+        print()
+        # Show the list
+        cmd_shopping_show(args)
+    else:
+        print(f"❌ {message}")
+    print()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CLI Parser
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1030,6 +1267,21 @@ def build_parser():
     # today command
     today_parser = sub.add_parser("today", help="Heutige Rezepte anzeigen")
     today_parser.set_defaults(func=cmd_today)
+    
+    # shopping command with subcommands
+    shopping_parser = sub.add_parser("shopping", help="Einkaufsliste verwalten")
+    shopping_sub = shopping_parser.add_subparsers(dest="shopping_action", required=True)
+    
+    shopping_show = shopping_sub.add_parser("show", help="Einkaufsliste anzeigen")
+    shopping_show.set_defaults(func=cmd_shopping_show)
+    
+    shopping_add = shopping_sub.add_parser("add", help="Rezepte zur Einkaufsliste hinzufügen")
+    shopping_add.add_argument("recipe_ids", nargs="+", help="Rezept-IDs (z.B. r130616 r123456)")
+    shopping_add.set_defaults(func=cmd_shopping_add)
+    
+    shopping_from_plan = shopping_sub.add_parser("from-plan", help="Rezepte aus dem Wochenplan hinzufügen")
+    shopping_from_plan.add_argument("--days", "-d", type=int, default=7, help="Anzahl Tage (default: 7)")
+    shopping_from_plan.set_defaults(func=cmd_shopping_from_plan)
     
     # status command
     status_parser = sub.add_parser("status", help="Status anzeigen")

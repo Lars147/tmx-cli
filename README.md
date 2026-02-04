@@ -22,6 +22,7 @@
 - 📅 **Weekly Plan** – View, sync, and manage your meal plan  
 - 🔍 **Search** – Search 24,000+ recipes from Cookidoo
 - ➕ **CRUD** – Add, remove, and move recipes in your plan
+- 🛒 **Shopping List** – Generate ingredient lists from your plan
 - 📦 **Zero dependencies** – Uses only Python standard library
 
 ## Quick Start
@@ -103,6 +104,14 @@ tmx plan remove r130616 --date 2026-02-10
 
 # Move recipe to another day
 tmx plan move r130616 --from 2026-02-10 --to 2026-02-15
+```
+
+### Shopping List
+```bash
+tmx shopping show              # Show current shopping list
+tmx shopping add r130616       # Add recipe to shopping list
+tmx shopping from-plan         # Add all recipes from plan (7 days)
+tmx shopping from-plan -d 14   # Add recipes from next 14 days
 ```
 
 ### Status
