@@ -1177,6 +1177,8 @@ def cmd_plan_move(args):
 
 def cmd_shopping_show(args):
     """Show the current shopping list."""
+    by_recipe = getattr(args, 'by_recipe', False)
+    
     print()
     print("🛒 Einkaufsliste")
     print("─" * 50)
@@ -1195,40 +1197,76 @@ def cmd_shopping_show(args):
         print("  tmx shopping from-plan")
         return
     
-    # Show recipes in list
-    print(f"\n📖 Rezepte ({len(recipes)}):")
-    for recipe in recipes:
-        rid = recipe.get('id', '')
-        print(f"  • {recipe.get('title')}  [{rid}]")
-    
-    # Parse and show ingredients
-    ingredients = parse_shopping_ingredients(data)
-    
-    if ingredients:
-        print(f"\n🥕 Zutaten ({len(ingredients)}):")
-        print()
-        
-        # Group by owned status
-        needed = [i for i in ingredients if not i["is_owned"]]
-        owned = [i for i in ingredients if i["is_owned"]]
-        
-        for ing in needed:
-            qty = ing["quantity"]
-            unit = ing["unit"]
-            name = ing["name"]
-            prep = f" ({ing['preparation']})" if ing["preparation"] else ""
-            opt = " (optional)" if ing["optional"] else ""
+    if by_recipe:
+        # Show ingredients grouped by recipe
+        for recipe in recipes:
+            rid = recipe.get('id', '')
+            title = recipe.get('title', 'Unbekannt')
+            print(f"\n📖 {title}  [{rid}]")
+            print()
             
-            # Format quantity nicely
-            if qty == int(qty):
-                qty_str = str(int(qty))
-            else:
-                qty_str = f"{qty:.1f}"
-            
-            print(f"  [ ] {qty_str} {unit} {name}{prep}{opt}")
+            for ing in recipe.get("recipeIngredientGroups", []):
+                name = ing.get("ingredientNotation", "")
+                qty = ing.get("quantity", {}).get("value", 0)
+                unit = ing.get("unitNotation", "")
+                prep = ing.get("preparation", "")
+                is_owned = ing.get("isOwned", False)
+                optional = ing.get("optional", False)
+                
+                prep_str = f" ({prep})" if prep else ""
+                opt_str = " (optional)" if optional else ""
+                
+                if qty == int(qty):
+                    qty_str = str(int(qty))
+                else:
+                    qty_str = f"{qty:.1f}"
+                
+                check = "✓" if is_owned else " "
+                print(f"  [{check}] {qty_str} {unit} {name}{prep_str}{opt_str}")
         
-        if owned:
-            print(f"\n  ✓ {len(owned)} Zutaten bereits vorhanden")
+        # Additional items
+        additional = data.get("additionalItems", [])
+        if additional:
+            print(f"\n📝 Manuell hinzugefügt")
+            print()
+            for item in additional:
+                check = "✓" if item.get("isOwned", False) else " "
+                print(f"  [{check}] {item.get('name', '')}")
+    else:
+        # Show aggregated list (default)
+        print(f"\n📖 Rezepte ({len(recipes)}):")
+        for recipe in recipes:
+            rid = recipe.get('id', '')
+            print(f"  • {recipe.get('title')}  [{rid}]")
+        
+        # Parse and show ingredients
+        ingredients = parse_shopping_ingredients(data)
+        
+        if ingredients:
+            print(f"\n🥕 Zutaten ({len(ingredients)}):")
+            print()
+            
+            # Group by owned status
+            needed = [i for i in ingredients if not i["is_owned"]]
+            owned = [i for i in ingredients if i["is_owned"]]
+            
+            for ing in needed:
+                qty = ing["quantity"]
+                unit = ing["unit"]
+                name = ing["name"]
+                prep = f" ({ing['preparation']})" if ing["preparation"] else ""
+                opt = " (optional)" if ing["optional"] else ""
+                
+                # Format quantity nicely
+                if qty == int(qty):
+                    qty_str = str(int(qty))
+                else:
+                    qty_str = f"{qty:.1f}"
+                
+                print(f"  [ ] {qty_str} {unit} {name}{prep}{opt}")
+            
+            if owned:
+                print(f"\n  ✓ {len(owned)} Zutaten bereits vorhanden")
     
     print()
 
@@ -1549,6 +1587,7 @@ def build_parser():
     shopping_sub = shopping_parser.add_subparsers(dest="shopping_action", required=True)
     
     shopping_show = shopping_sub.add_parser("show", help="Einkaufsliste anzeigen")
+    shopping_show.add_argument("--by-recipe", "-r", action="store_true", help="Zutaten pro Rezept anzeigen")
     shopping_show.set_defaults(func=cmd_shopping_show)
     
     shopping_add = shopping_sub.add_parser("add", help="Rezepte zur Einkaufsliste hinzufügen")

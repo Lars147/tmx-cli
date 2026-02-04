@@ -114,7 +114,8 @@ tmx plan move r130616 --from 2026-02-10 --to 2026-02-15
 
 ### Shopping List
 ```bash
-tmx shopping show              # Show current shopping list
+tmx shopping show              # Show aggregated shopping list
+tmx shopping show --by-recipe  # Show ingredients per recipe
 tmx shopping add r130616       # Add recipe to shopping list
 tmx shopping from-plan         # Add all recipes from plan (7 days)
 tmx shopping from-plan -d 14   # Add recipes from next 14 days
@@ -122,9 +123,11 @@ tmx shopping remove r130616    # Remove recipe from shopping list
 tmx shopping clear             # Clear entire shopping list
 ```
 
-### Status
+### Status & Cache
 ```bash
-tmx status    # Check login status and cache info
+tmx status             # Check login status and cache info
+tmx cache clear        # Clear cached data (weekplan, search token)
+tmx cache clear --all  # Also clear session cookies (requires re-login)
 ```
 
 ### Shell Completion
