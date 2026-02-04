@@ -682,6 +682,55 @@ def add_recipes_to_shopping_list(recipe_ids: list[str]) -> tuple[bool, str]:
         return False, str(e)
 
 
+def remove_recipe_from_shopping_list(recipe_id: str) -> tuple[bool, str]:
+    """Remove a recipe from the shopping list."""
+    cookies = load_cookies()
+    if not is_authenticated(cookies):
+        return False, "Nicht eingeloggt"
+    
+    url = f"{COOKIDOO_BASE}/shopping/{LOCALE}/recipe/{recipe_id}/remove"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        "Cookie": format_cookie_header(cookies),
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    
+    ctx = ssl.create_default_context()
+    req = urllib.request.Request(url, data=b"{}", headers=headers, method="DELETE")
+    
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            result = json.loads(resp.read().decode())
+            return True, result.get("message", "Rezept entfernt")
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code}"
+    except Exception as e:
+        return False, str(e)
+
+
+def clear_shopping_list() -> tuple[bool, str]:
+    """Remove all recipes from the shopping list."""
+    data = get_shopping_list()
+    if not data:
+        return False, "Konnte Einkaufsliste nicht laden"
+    
+    recipes = data.get("recipes", [])
+    if not recipes:
+        return True, "Einkaufsliste ist bereits leer"
+    
+    removed = 0
+    for recipe in recipes:
+        recipe_id = recipe.get("id")
+        if recipe_id:
+            success, _ = remove_recipe_from_shopping_list(recipe_id)
+            if success:
+                removed += 1
+    
+    return True, f"{removed} Rezept(e) entfernt"
+
+
 def parse_shopping_ingredients(shopping_data: dict) -> list[dict]:
     """Parse shopping list data into a flat ingredient list."""
     ingredients = []
@@ -1159,6 +1208,36 @@ def cmd_shopping_add(args):
     print()
 
 
+def cmd_shopping_remove(args):
+    """Remove a recipe from the shopping list."""
+    recipe_id = args.recipe_id
+    
+    print()
+    print(f"🗑️ Entferne {recipe_id} von der Einkaufsliste...")
+    
+    success, message = remove_recipe_from_shopping_list(recipe_id)
+    
+    if success:
+        print(f"✅ {message}")
+    else:
+        print(f"❌ {message}")
+    print()
+
+
+def cmd_shopping_clear(args):
+    """Clear the entire shopping list."""
+    print()
+    print("🗑️ Leere die Einkaufsliste...")
+    
+    success, message = clear_shopping_list()
+    
+    if success:
+        print(f"✅ {message}")
+    else:
+        print(f"❌ {message}")
+    print()
+
+
 def cmd_shopping_from_plan(args):
     """Add all recipes from the current plan to the shopping list."""
     days = getattr(args, 'days', 7)
@@ -1282,6 +1361,13 @@ def build_parser():
     shopping_from_plan = shopping_sub.add_parser("from-plan", help="Rezepte aus dem Wochenplan hinzufügen")
     shopping_from_plan.add_argument("--days", "-d", type=int, default=7, help="Anzahl Tage (default: 7)")
     shopping_from_plan.set_defaults(func=cmd_shopping_from_plan)
+    
+    shopping_remove = shopping_sub.add_parser("remove", help="Rezept von der Einkaufsliste entfernen")
+    shopping_remove.add_argument("recipe_id", help="Rezept-ID (z.B. r130616)")
+    shopping_remove.set_defaults(func=cmd_shopping_remove)
+    
+    shopping_clear = shopping_sub.add_parser("clear", help="Einkaufsliste leeren")
+    shopping_clear.set_defaults(func=cmd_shopping_clear)
     
     # status command
     status_parser = sub.add_parser("status", help="Status anzeigen")

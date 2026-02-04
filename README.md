@@ -112,6 +112,8 @@ tmx shopping show              # Show current shopping list
 tmx shopping add r130616       # Add recipe to shopping list
 tmx shopping from-plan         # Add all recipes from plan (7 days)
 tmx shopping from-plan -d 14   # Add recipes from next 14 days
+tmx shopping remove r130616    # Remove recipe from shopping list
+tmx shopping clear             # Clear entire shopping list
 ```
 
 ### Status
