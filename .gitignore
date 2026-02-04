@@ -9,9 +9,8 @@ __pycache__/
 *.pyc
 
 # Debug files
-*.png
-*.html
 debug_*
+*.html
 
 # Virtual environments
 .venv/

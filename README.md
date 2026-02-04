@@ -1,4 +1,8 @@
-# TMX-CLI 🍳
+<p align="center">
+  <img src="logo.jpg" alt="TMX-CLI Logo" width="400">
+</p>
+
+# TMX-CLI
 
 A pure Python CLI for managing your Cookidoo® (Thermomix®) weekly meal plan.
 
