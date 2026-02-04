@@ -1,7 +1,7 @@
 [project]
 name = "tmx-cli"
 version = "0.1.0"
-description = "A pure Python CLI for managing your Cookidoo® (Thermomix®) weekly meal plan"
+description = "A pure Python CLI for managing your Cookidoo (Thermomix) weekly meal plan"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [{name = "Lars Heinen"}]
