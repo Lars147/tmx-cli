@@ -21,6 +21,7 @@
 - 🔐 **Login** – Authenticate with your Cookidoo account
 - 📅 **Weekly Plan** – View, sync, and manage your meal plan  
 - 🔍 **Search** – Search 24,000+ recipes from Cookidoo
+- ❤️ **Favorites** – View your saved/favorite recipes
 - ➕ **CRUD** – Add, remove, and move recipes in your plan
 - 🛒 **Shopping List** – Generate ingredient lists from your plan
 - 📦 **Zero dependencies** – Uses only Python standard library
@@ -110,6 +111,11 @@ tmx categories                         # List all categories
 ### Recipe Details
 ```bash
 tmx recipe r130616    # Show ingredients, steps, nutrition
+```
+
+### Favorites
+```bash
+tmx favorites         # Show all saved/favorite recipes
 ```
 
 ### Manage Plan

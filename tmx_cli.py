@@ -885,6 +885,73 @@ def save_weekplan(data: dict):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Favorites
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_favorites() -> tuple[list[dict], Optional[str]]:
+    """
+    Get the user's saved/favorite recipes from Cookidoo.
+    Returns (recipes, error_message).
+    """
+    cookies = load_cookies()
+    if not is_authenticated(cookies):
+        return [], "Nicht eingeloggt"
+    
+    url = f"{COOKIDOO_BASE}/organize/{LOCALE}/my-recipes"
+    status, html = fetch(url, cookies)
+    
+    if status != 200:
+        return [], f"HTTP {status}"
+    
+    # Check for redirect to login
+    if "oauth2/start" in html or '<form' in html[:1000] and 'login' in html[:1000].lower():
+        return [], "Session abgelaufen - bitte neu einloggen"
+    
+    # Parse favorites from HTML
+    recipes = parse_favorites_html(html)
+    return recipes, None
+
+
+def parse_favorites_html(html: str) -> list[dict]:
+    """Parse the my-recipes HTML page and extract favorite recipes."""
+    recipes = []
+    
+    # Find all core-tile elements with data-recipe-id
+    # Pattern: <core-tile ... data-recipe-id="r123456" ...>...</core-tile>
+    tile_pattern = re.compile(
+        r'<core-tile\s+[^>]*data-recipe-id="([^"]+)"[^>]*>(.*?)</core-tile>',
+        re.DOTALL
+    )
+    
+    for match in tile_pattern.finditer(html):
+        recipe_id = match.group(1)
+        tile_content = match.group(2)
+        
+        # Extract title
+        title_match = re.search(
+            r'class="core-tile__description-text"[^>]*>([^<]+)<',
+            tile_content
+        )
+        title = title_match.group(1).strip() if title_match else "Unbekannt"
+        
+        # Extract image URL (skip base64 placeholders)
+        img_match = re.search(
+            r'<img[^>]+src="(https://assets\.tmecosys[^"]+)"',
+            tile_content
+        )
+        image = img_match.group(1) if img_match else None
+        
+        recipes.append({
+            "id": recipe_id,
+            "title": title,
+            "url": f"{COOKIDOO_BASE}/recipes/recipe/{LOCALE}/{recipe_id}",
+            "image": image,
+        })
+    
+    return recipes
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CLI Commands
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1302,6 +1369,38 @@ def cmd_categories(args):
     print()
     print("Verwendung: tmx search \"\" --category <name>")
     print()
+
+
+def cmd_favorites(args):
+    """Show saved/favorite recipes."""
+    print()
+    print("❤️  Meine Favoriten")
+    print("─" * 50)
+    
+    recipes, error = get_favorites()
+    
+    if error:
+        print(f"❌ {error}")
+        return
+    
+    if not recipes:
+        print("Keine Favoriten gespeichert.")
+        print()
+        print("Rezepte auf cookidoo.de als Favorit markieren,")
+        print("dann hier mit 'tmx favorites' anzeigen.")
+        return
+    
+    print(f"Gefunden: {len(recipes)} Rezepte")
+    print()
+    
+    for i, r in enumerate(recipes, 1):
+        title = r.get("title", "Unbekannt")
+        rid = r.get("id", "")
+        url = r.get("url", "")
+        
+        print(f"  {i:2}. {title}  [{rid}]")
+        print(f"      {url}")
+        print()
 
 
 def cmd_status(args):
@@ -1793,7 +1892,7 @@ _tmx_completion() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="plan search recipe categories today shopping status cache login completion"
+    local commands="plan search recipe categories favorites today shopping status cache login completion"
     local plan_cmds="show sync add remove move"
     local shopping_cmds="show add add-item from-plan remove clear export"
     local cache_cmds="clear"
@@ -1886,6 +1985,7 @@ _tmx() {
                 'search:Rezepte in Cookidoo suchen'
                 'recipe:Rezeptdetails anzeigen'
                 'categories:Kategorien anzeigen'
+                'favorites:Gespeicherte Favoriten anzeigen'
                 'today:Heutige Rezepte anzeigen'
                 'shopping:Einkaufsliste verwalten'
                 'status:Status anzeigen'
@@ -1972,7 +2072,7 @@ compdef _tmx tmx
 FISH_COMPLETION = '''
 # tmx completions for fish
 
-set -l commands plan search recipe categories today shopping status cache login completion
+set -l commands plan search recipe categories favorites today shopping status cache login completion
 set -l plan_cmds show sync add remove move
 set -l shopping_cmds show add add-item from-plan remove clear export
 set -l cache_cmds clear
@@ -1982,6 +2082,7 @@ complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "plan" -d "Woc
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "search" -d "Rezepte suchen"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "recipe" -d "Rezeptdetails"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "categories" -d "Kategorien"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "favorites" -d "Favoriten"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "today" -d "Heutige Rezepte"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "shopping" -d "Einkaufsliste"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "status" -d "Status anzeigen"
@@ -2117,6 +2218,10 @@ def build_parser():
     # categories command
     categories_parser = sub.add_parser("categories", help="Verfügbare Kategorien anzeigen")
     categories_parser.set_defaults(func=cmd_categories)
+    
+    # favorites command
+    favorites_parser = sub.add_parser("favorites", help="Gespeicherte Favoriten anzeigen")
+    favorites_parser.set_defaults(func=cmd_favorites)
     
     # today command
     today_parser = sub.add_parser("today", help="Heutige Rezepte anzeigen")
