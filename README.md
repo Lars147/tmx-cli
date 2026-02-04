@@ -120,7 +120,10 @@ tmx recipe r130616    # Show ingredients, steps, nutrition
 
 ### Favorites
 ```bash
-tmx favorites         # Show all saved/favorite recipes
+tmx favorites              # Show all saved/favorite recipes
+tmx favorites show         # Same as above
+tmx favorites add r130616  # Add recipe to favorites
+tmx favorites remove r130616  # Remove recipe from favorites
 ```
 
 ### Manage Plan

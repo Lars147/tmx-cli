@@ -1121,6 +1121,107 @@ def parse_favorites_html(html: str) -> list[dict]:
     return recipes
 
 
+def add_to_favorites(recipe_id: str) -> tuple[bool, str]:
+    """
+    Add a recipe to favorites/bookmarks.
+    Uses form-encoded POST with _method=put (Rails-style method override).
+    Returns (success, message).
+    """
+    cookies = load_cookies()
+    if not is_authenticated(cookies):
+        return False, "Nicht eingeloggt"
+    
+    # Ensure recipe_id starts with 'r'
+    if not recipe_id.startswith('r'):
+        recipe_id = f'r{recipe_id}'
+    
+    url = f"{COOKIDOO_BASE}/organize/{LOCALE}/api/bookmark"
+    
+    # Form-encoded data with method override
+    data = urllib.parse.urlencode({
+        "_method": "put",
+        "recipeId": recipe_id,
+    }).encode("utf-8")
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        "Cookie": format_cookie_header(cookies),
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "text/html, application/json, */*",
+        "Origin": COOKIDOO_BASE,
+        "Referer": f"{COOKIDOO_BASE}/recipes/recipe/{LOCALE}/{recipe_id}",
+    }
+    
+    ctx = ssl.create_default_context()
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            # Success - recipe added to favorites
+            return True, "Rezept zu Favoriten hinzugefügt"
+    except urllib.error.HTTPError as e:
+        if e.code in (200, 201, 204):
+            return True, "Rezept zu Favoriten hinzugefügt"
+        elif e.code == 409:
+            return True, "Rezept ist bereits in den Favoriten"
+        elif e.code == 401:
+            return False, "Session abgelaufen - bitte neu einloggen"
+        elif e.code == 404:
+            return False, f"Rezept {recipe_id} nicht gefunden"
+        return False, f"HTTP {e.code}"
+    except Exception as e:
+        return False, str(e)
+
+
+def remove_from_favorites(recipe_id: str) -> tuple[bool, str]:
+    """
+    Remove a recipe from favorites/bookmarks.
+    Uses form-encoded POST with _method=delete (Rails-style method override).
+    Returns (success, message).
+    """
+    cookies = load_cookies()
+    if not is_authenticated(cookies):
+        return False, "Nicht eingeloggt"
+    
+    # Ensure recipe_id starts with 'r'
+    if not recipe_id.startswith('r'):
+        recipe_id = f'r{recipe_id}'
+    
+    url = f"{COOKIDOO_BASE}/organize/{LOCALE}/api/bookmark"
+    
+    # Form-encoded data with method override
+    data = urllib.parse.urlencode({
+        "_method": "delete",
+        "recipeId": recipe_id,
+    }).encode("utf-8")
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        "Cookie": format_cookie_header(cookies),
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "text/html, application/json, */*",
+        "Origin": COOKIDOO_BASE,
+        "Referer": f"{COOKIDOO_BASE}/organize/{LOCALE}/my-recipes",
+    }
+    
+    ctx = ssl.create_default_context()
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            return True, "Rezept aus Favoriten entfernt"
+    except urllib.error.HTTPError as e:
+        if e.code in (200, 204):
+            return True, "Rezept aus Favoriten entfernt"
+        elif e.code == 401:
+            return False, "Session abgelaufen - bitte neu einloggen"
+        elif e.code == 404:
+            return False, f"Rezept {recipe_id} nicht in Favoriten gefunden"
+        return False, f"HTTP {e.code}"
+    except Exception as e:
+        return False, str(e)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CLI Commands
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1599,7 +1700,7 @@ def cmd_categories(args):
     cmd_categories_show(args)
 
 
-def cmd_favorites(args):
+def cmd_favorites_show(args):
     """Show saved/favorite recipes."""
     print()
     print("❤️  Meine Favoriten")
@@ -1614,8 +1715,8 @@ def cmd_favorites(args):
     if not recipes:
         print("Keine Favoriten gespeichert.")
         print()
-        print("Rezepte auf cookidoo.de als Favorit markieren,")
-        print("dann hier mit 'tmx favorites' anzeigen.")
+        print("Rezepte hinzufügen mit: tmx favorites add <recipe_id>")
+        print("Oder auf cookidoo.de als Favorit markieren.")
         return
     
     print(f"Gefunden: {len(recipes)} Rezepte")
@@ -1629,6 +1730,52 @@ def cmd_favorites(args):
         print(f"  {i:2}. {title}  [{rid}]")
         print(f"      {url}")
         print()
+
+
+def cmd_favorites_add(args):
+    """Add a recipe to favorites."""
+    recipe_id = args.recipe_id
+    
+    # Ensure recipe_id starts with 'r'
+    if not recipe_id.startswith('r'):
+        recipe_id = f'r{recipe_id}'
+    
+    print()
+    print(f"❤️  Füge {recipe_id} zu Favoriten hinzu...")
+    
+    success, message = add_to_favorites(recipe_id)
+    
+    if success:
+        print(f"✅ {message}")
+    else:
+        print(f"❌ {message}")
+    print()
+
+
+def cmd_favorites_remove(args):
+    """Remove a recipe from favorites."""
+    recipe_id = args.recipe_id
+    
+    # Ensure recipe_id starts with 'r'
+    if not recipe_id.startswith('r'):
+        recipe_id = f'r{recipe_id}'
+    
+    print()
+    print(f"💔 Entferne {recipe_id} aus Favoriten...")
+    
+    success, message = remove_from_favorites(recipe_id)
+    
+    if success:
+        print(f"✅ {message}")
+    else:
+        print(f"❌ {message}")
+    print()
+
+
+# Backward compatibility alias
+def cmd_favorites(args):
+    """Alias for favorites show (backward compatibility)."""
+    cmd_favorites_show(args)
 
 
 def cmd_status(args):
@@ -2125,6 +2272,7 @@ _tmx_completion() {
     local shopping_cmds="show add add-item from-plan remove clear export"
     local cache_cmds="clear"
     local categories_cmds="show sync"
+    local favorites_cmds="show add remove"
 
     # Get the main command and subcommand
     local cmd="" subcmd=""
@@ -2164,6 +2312,7 @@ _tmx_completion() {
                     *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
                 esac ;;
             categories) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
+            favorites) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
             login) COMPREPLY=($(compgen -W "--email -e --password -p --help" -- "${cur}")) ;;
             *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
         esac
@@ -2187,6 +2336,7 @@ _tmx_completion() {
                     shopping) COMPREPLY=($(compgen -W "${shopping_cmds}" -- "${cur}")) ;;
                     cache) COMPREPLY=($(compgen -W "${cache_cmds}" -- "${cur}")) ;;
                     categories) COMPREPLY=($(compgen -W "${categories_cmds}" -- "${cur}")) ;;
+                    favorites) COMPREPLY=($(compgen -W "${favorites_cmds}" -- "${cur}")) ;;
                     completion) COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}")) ;;
                 esac
             fi
@@ -2216,7 +2366,7 @@ _tmx() {
                 'search:Rezepte in Cookidoo suchen'
                 'recipe:Rezeptdetails anzeigen'
                 'categories:Kategorien verwalten'
-                'favorites:Gespeicherte Favoriten anzeigen'
+                'favorites:Favoriten verwalten'
                 'today:Heutige Rezepte anzeigen'
                 'shopping:Einkaufsliste verwalten'
                 'status:Status anzeigen'
@@ -2260,6 +2410,26 @@ _tmx() {
                                 export) _arguments '--format[Format]:format:(text markdown json)' '-f[Format]:format:(text markdown json)' '--by-recipe[Pro Rezept]' '-r[Pro Rezept]' '--output[Datei]:file:_files' '-o[Datei]:file:_files' ;;
                                 from-plan) _arguments '--days[Anzahl Tage]:days' '-d[Anzahl Tage]:days' ;;
                                 add) _arguments '*:recipe_id' ;;
+                                remove) _arguments '1:recipe_id' ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+                favorites)
+                    _arguments -C '1: :->fav_cmd' '*:: :->fav_args'
+                    case "$state" in
+                        fav_cmd)
+                            local -a fav_cmds
+                            fav_cmds=(
+                                'show:Favoriten anzeigen'
+                                'add:Rezept zu Favoriten hinzufügen'
+                                'remove:Rezept aus Favoriten entfernen'
+                            )
+                            _describe 'favorites command' fav_cmds
+                            ;;
+                        fav_args)
+                            case "$line[1]" in
+                                add) _arguments '1:recipe_id' ;;
                                 remove) _arguments '1:recipe_id' ;;
                             esac
                             ;;
@@ -2321,13 +2491,14 @@ set -l plan_cmds show sync add remove move
 set -l shopping_cmds show add add-item from-plan remove clear export
 set -l cache_cmds clear
 set -l categories_cmds show sync
+set -l favorites_cmds show add remove
 
 complete -c tmx -f
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "plan" -d "Wochenplan verwalten"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "search" -d "Rezepte suchen"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "recipe" -d "Rezeptdetails"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "categories" -d "Kategorien verwalten"
-complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "favorites" -d "Favoriten"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "favorites" -d "Favoriten verwalten"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "today" -d "Heutige Rezepte"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "shopping" -d "Einkaufsliste"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "status" -d "Status anzeigen"
@@ -2351,6 +2522,11 @@ complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand
 # categories subcommands
 complete -c tmx -n "__fish_seen_subcommand_from categories; and not __fish_seen_subcommand_from $categories_cmds" -a "show" -d "Kategorien anzeigen"
 complete -c tmx -n "__fish_seen_subcommand_from categories; and not __fish_seen_subcommand_from $categories_cmds" -a "sync" -d "Von Cookidoo synchronisieren"
+
+# favorites subcommands
+complete -c tmx -n "__fish_seen_subcommand_from favorites; and not __fish_seen_subcommand_from $favorites_cmds" -a "show" -d "Favoriten anzeigen"
+complete -c tmx -n "__fish_seen_subcommand_from favorites; and not __fish_seen_subcommand_from $favorites_cmds" -a "add" -d "Zu Favoriten hinzufügen"
+complete -c tmx -n "__fish_seen_subcommand_from favorites; and not __fish_seen_subcommand_from $favorites_cmds" -a "remove" -d "Aus Favoriten entfernen"
 
 # shopping subcommands and options
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "show" -d "Anzeigen"
@@ -2477,9 +2653,23 @@ def build_parser():
     # Default action for 'categories' without subcommand
     categories_parser.set_defaults(func=cmd_categories_show)
     
-    # favorites command
-    favorites_parser = sub.add_parser("favorites", help="Gespeicherte Favoriten anzeigen")
-    favorites_parser.set_defaults(func=cmd_favorites)
+    # favorites command with subcommands
+    favorites_parser = sub.add_parser("favorites", help="Favoriten verwalten")
+    favorites_sub = favorites_parser.add_subparsers(dest="favorites_action")
+    
+    favorites_show = favorites_sub.add_parser("show", help="Favoriten anzeigen")
+    favorites_show.set_defaults(func=cmd_favorites_show)
+    
+    favorites_add = favorites_sub.add_parser("add", help="Rezept zu Favoriten hinzufügen")
+    favorites_add.add_argument("recipe_id", help="Rezept-ID (z.B. r130616)")
+    favorites_add.set_defaults(func=cmd_favorites_add)
+    
+    favorites_remove = favorites_sub.add_parser("remove", help="Rezept aus Favoriten entfernen")
+    favorites_remove.add_argument("recipe_id", help="Rezept-ID (z.B. r130616)")
+    favorites_remove.set_defaults(func=cmd_favorites_remove)
+    
+    # Default action for 'favorites' without subcommand
+    favorites_parser.set_defaults(func=cmd_favorites_show)
     
     # today command
     today_parser = sub.add_parser("today", help="Heutige Rezepte anzeigen")
