@@ -1479,25 +1479,68 @@ _tmx_completion() {
     local shopping_cmds="show add from-plan remove clear export"
     local cache_cmds="clear"
 
+    # Get the main command and subcommand
+    local cmd="" subcmd=""
+    for ((i=1; i < cword; i++)); do
+        if [[ "${words[i]}" != -* ]]; then
+            if [[ -z "$cmd" ]]; then
+                cmd="${words[i]}"
+            elif [[ -z "$subcmd" ]]; then
+                subcmd="${words[i]}"
+                break
+            fi
+        fi
+    done
+
+    # Complete options if current word starts with -
+    if [[ "${cur}" == -* ]]; then
+        case "$cmd" in
+            plan)
+                case "$subcmd" in
+                    sync) COMPREPLY=($(compgen -W "--days -d --since -s --help" -- "${cur}")) ;;
+                    add) COMPREPLY=($(compgen -W "--date -d --help" -- "${cur}")) ;;
+                    remove) COMPREPLY=($(compgen -W "--date -d --help" -- "${cur}")) ;;
+                    move) COMPREPLY=($(compgen -W "--from -f --to -t --help" -- "${cur}")) ;;
+                    *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
+                esac ;;
+            shopping)
+                case "$subcmd" in
+                    show) COMPREPLY=($(compgen -W "--by-recipe -r --help" -- "${cur}")) ;;
+                    export) COMPREPLY=($(compgen -W "--format -f --by-recipe -r --output -o --help" -- "${cur}")) ;;
+                    from-plan) COMPREPLY=($(compgen -W "--days -d --help" -- "${cur}")) ;;
+                    *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
+                esac ;;
+            search) COMPREPLY=($(compgen -W "--limit -n --help" -- "${cur}")) ;;
+            cache)
+                case "$subcmd" in
+                    clear) COMPREPLY=($(compgen -W "--all -a --help" -- "${cur}")) ;;
+                    *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
+                esac ;;
+            login) COMPREPLY=($(compgen -W "--email -e --password -p --help" -- "${cur}")) ;;
+            *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
+        esac
+        return
+    fi
+
+    # Complete option values
+    case "$prev" in
+        --format|-f) COMPREPLY=($(compgen -W "text markdown json" -- "${cur}")); return ;;
+    esac
+
+    # Complete commands and subcommands
     case "${cword}" in
         1)
             COMPREPLY=($(compgen -W "${commands}" -- "${cur}"))
             ;;
-        2)
-            case "${prev}" in
-                plan)
-                    COMPREPLY=($(compgen -W "${plan_cmds}" -- "${cur}"))
-                    ;;
-                shopping)
-                    COMPREPLY=($(compgen -W "${shopping_cmds}" -- "${cur}"))
-                    ;;
-                cache)
-                    COMPREPLY=($(compgen -W "${cache_cmds}" -- "${cur}"))
-                    ;;
-                completion)
-                    COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}"))
-                    ;;
-            esac
+        *)
+            if [[ -z "$subcmd" ]]; then
+                case "$cmd" in
+                    plan) COMPREPLY=($(compgen -W "${plan_cmds}" -- "${cur}")) ;;
+                    shopping) COMPREPLY=($(compgen -W "${shopping_cmds}" -- "${cur}")) ;;
+                    cache) COMPREPLY=($(compgen -W "${cache_cmds}" -- "${cur}")) ;;
+                    completion) COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}")) ;;
+                esac
+            fi
             ;;
     esac
 }
@@ -1509,62 +1552,90 @@ ZSH_COMPLETION = '''
 #compdef tmx
 
 _tmx() {
-    local -a commands plan_cmds shopping_cmds cache_cmds
-
-    commands=(
-        'plan:Wochenplan verwalten'
-        'search:Rezepte in Cookidoo suchen'
-        'today:Heutige Rezepte anzeigen'
-        'shopping:Einkaufsliste verwalten'
-        'status:Status anzeigen'
-        'cache:Cache verwalten'
-        'login:Bei Cookidoo einloggen'
-        'completion:Shell-Completion ausgeben'
-    )
-
-    plan_cmds=(
-        'show:Wochenplan anzeigen'
-        'sync:Wochenplan synchronisieren'
-        'add:Rezept hinzufügen'
-        'remove:Rezept entfernen'
-        'move:Rezept verschieben'
-    )
-
-    shopping_cmds=(
-        'show:Einkaufsliste anzeigen'
-        'add:Rezepte hinzufügen'
-        'from-plan:Aus Wochenplan hinzufügen'
-        'remove:Rezept entfernen'
-        'clear:Liste leeren'
-        'export:Exportieren'
-    )
-
-    cache_cmds=(
-        'clear:Cache löschen'
-    )
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
 
     _arguments -C \\
         '1: :->command' \\
-        '2: :->subcommand' \\
-        '*::arg:->args'
+        '*:: :->args'
 
     case "$state" in
         command)
+            local -a commands
+            commands=(
+                'plan:Wochenplan verwalten'
+                'search:Rezepte in Cookidoo suchen'
+                'today:Heutige Rezepte anzeigen'
+                'shopping:Einkaufsliste verwalten'
+                'status:Status anzeigen'
+                'cache:Cache verwalten'
+                'login:Bei Cookidoo einloggen'
+                'completion:Shell-Completion ausgeben'
+            )
             _describe 'command' commands
             ;;
-        subcommand)
-            case "$words[1]" in
+        args)
+            case "$line[1]" in
                 plan)
-                    _describe 'plan command' plan_cmds
+                    _arguments -C '1: :->plan_cmd' '*:: :->plan_args'
+                    case "$state" in
+                        plan_cmd)
+                            local -a plan_cmds
+                            plan_cmds=(show sync add remove move)
+                            _describe 'plan command' plan_cmds
+                            ;;
+                        plan_args)
+                            case "$line[1]" in
+                                sync) _arguments '--days[Anzahl Tage]:days' '-d[Anzahl Tage]:days' '--since[Startdatum]:date' '-s[Startdatum]:date' ;;
+                                add) _arguments '1:recipe_id' '--date[Datum]:date' '-d[Datum]:date' ;;
+                                remove) _arguments '1:recipe_id' '--date[Datum]:date' '-d[Datum]:date' ;;
+                                move) _arguments '1:recipe_id' '--from[Von Datum]:date' '-f[Von Datum]:date' '--to[Nach Datum]:date' '-t[Nach Datum]:date' ;;
+                            esac
+                            ;;
+                    esac
                     ;;
                 shopping)
-                    _describe 'shopping command' shopping_cmds
+                    _arguments -C '1: :->shop_cmd' '*:: :->shop_args'
+                    case "$state" in
+                        shop_cmd)
+                            local -a shop_cmds
+                            shop_cmds=(show add from-plan remove clear export)
+                            _describe 'shopping command' shop_cmds
+                            ;;
+                        shop_args)
+                            case "$line[1]" in
+                                show) _arguments '--by-recipe[Pro Rezept]' '-r[Pro Rezept]' ;;
+                                export) _arguments '--format[Format]:format:(text markdown json)' '-f[Format]:format:(text markdown json)' '--by-recipe[Pro Rezept]' '-r[Pro Rezept]' '--output[Datei]:file:_files' '-o[Datei]:file:_files' ;;
+                                from-plan) _arguments '--days[Anzahl Tage]:days' '-d[Anzahl Tage]:days' ;;
+                                add) _arguments '*:recipe_id' ;;
+                                remove) _arguments '1:recipe_id' ;;
+                            esac
+                            ;;
+                    esac
                     ;;
                 cache)
-                    _describe 'cache command' cache_cmds
+                    _arguments -C '1: :->cache_cmd' '*:: :->cache_args'
+                    case "$state" in
+                        cache_cmd)
+                            local -a cache_cmds
+                            cache_cmds=(clear)
+                            _describe 'cache command' cache_cmds
+                            ;;
+                        cache_args)
+                            case "$line[1]" in
+                                clear) _arguments '--all[Auch Cookies]' '-a[Auch Cookies]' ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+                search)
+                    _arguments '1:query' '--limit[Anzahl]:limit' '-n[Anzahl]:limit'
+                    ;;
+                login)
+                    _arguments '--email[E-Mail]:email' '-e[E-Mail]:email' '--password[Passwort]:password' '-p[Passwort]:password'
                     ;;
                 completion)
-                    _values 'shell' bash zsh fish
+                    _arguments '1:shell:(bash zsh fish)'
                     ;;
             esac
             ;;
@@ -1592,21 +1663,44 @@ complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "cache" -d "Ca
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "login" -d "Einloggen"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "completion" -d "Shell-Completion"
 
+# plan subcommands and options
 complete -c tmx -n "__fish_seen_subcommand_from plan; and not __fish_seen_subcommand_from $plan_cmds" -a "show" -d "Anzeigen"
 complete -c tmx -n "__fish_seen_subcommand_from plan; and not __fish_seen_subcommand_from $plan_cmds" -a "sync" -d "Synchronisieren"
 complete -c tmx -n "__fish_seen_subcommand_from plan; and not __fish_seen_subcommand_from $plan_cmds" -a "add" -d "Hinzufügen"
 complete -c tmx -n "__fish_seen_subcommand_from plan; and not __fish_seen_subcommand_from $plan_cmds" -a "remove" -d "Entfernen"
 complete -c tmx -n "__fish_seen_subcommand_from plan; and not __fish_seen_subcommand_from $plan_cmds" -a "move" -d "Verschieben"
+complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from sync" -l days -s d -d "Anzahl Tage"
+complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from sync" -l since -s s -d "Startdatum"
+complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from add" -l date -s d -d "Datum"
+complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from remove" -l date -s d -d "Datum"
+complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from move" -l from -s f -d "Von Datum"
+complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from move" -l to -s t -d "Nach Datum"
 
+# shopping subcommands and options
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "show" -d "Anzeigen"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "add" -d "Hinzufügen"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "from-plan" -d "Aus Plan"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "remove" -d "Entfernen"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "clear" -d "Leeren"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "export" -d "Exportieren"
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and __fish_seen_subcommand_from show" -l by-recipe -s r -d "Pro Rezept"
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and __fish_seen_subcommand_from export" -l format -s f -d "Format" -a "text markdown json"
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and __fish_seen_subcommand_from export" -l by-recipe -s r -d "Pro Rezept"
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and __fish_seen_subcommand_from export" -l output -s o -d "Datei" -r
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and __fish_seen_subcommand_from from-plan" -l days -s d -d "Anzahl Tage"
 
+# cache subcommands and options
 complete -c tmx -n "__fish_seen_subcommand_from cache; and not __fish_seen_subcommand_from $cache_cmds" -a "clear" -d "Löschen"
+complete -c tmx -n "__fish_seen_subcommand_from cache; and __fish_seen_subcommand_from clear" -l all -s a -d "Auch Cookies"
 
+# search options
+complete -c tmx -n "__fish_seen_subcommand_from search" -l limit -s n -d "Anzahl Ergebnisse"
+
+# login options
+complete -c tmx -n "__fish_seen_subcommand_from login" -l email -s e -d "E-Mail"
+complete -c tmx -n "__fish_seen_subcommand_from login" -l password -s p -d "Passwort"
+
+# completion
 complete -c tmx -n "__fish_seen_subcommand_from completion" -a "bash zsh fish" -d "Shell"
 '''
 
