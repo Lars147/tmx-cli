@@ -100,6 +100,11 @@ tmx search "Pasta"                  # Search recipes
 tmx search "vegetarisch Curry" -n 20  # More results
 ```
 
+### Recipe Details
+```bash
+tmx recipe r130616    # Show ingredients, steps, nutrition
+```
+
 ### Manage Plan
 ```bash
 # Add recipe to plan

@@ -1049,6 +1049,185 @@ def cmd_search(args):
         print()
 
 
+def get_recipe_details(recipe_id: str) -> Optional[dict]:
+    """Fetch recipe details from Cookidoo API."""
+    cookies = load_cookies()
+    if not is_authenticated(cookies):
+        return None
+    
+    url = f"{COOKIDOO_BASE}/recipes/recipe/{LOCALE}/{recipe_id}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        "Cookie": format_cookie_header(cookies),
+        "Accept": "application/json",
+    }
+    
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            return json.load(resp)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def cmd_recipe(args):
+    """Show recipe details."""
+    recipe_id = args.recipe_id
+    
+    # Ensure recipe_id starts with 'r'
+    if not recipe_id.startswith('r'):
+        recipe_id = f'r{recipe_id}'
+    
+    print()
+    print(f"🍳 Lade Rezept {recipe_id}...")
+    
+    data = get_recipe_details(recipe_id)
+    
+    if not data:
+        print("❌ Nicht eingeloggt. Führe 'tmx login' aus.")
+        return
+    
+    if "error" in data:
+        print(f"❌ Fehler: {data['error']}")
+        return
+    
+    # Title and basic info
+    title = data.get("title", "Unbekannt")
+    difficulty = data.get("difficulty", "")
+    difficulty_map = {"easy": "Einfach", "medium": "Mittel", "hard": "Schwer"}
+    difficulty_str = difficulty_map.get(difficulty, difficulty)
+    
+    # Times
+    times = data.get("times", [])
+    active_time = None
+    total_time = None
+    for t in times:
+        if t.get("type") == "activeTime":
+            active_time = t.get("quantity", {}).get("value", 0) // 60
+        elif t.get("type") == "totalTime":
+            total_time = t.get("quantity", {}).get("value", 0) // 60
+    
+    # Servings
+    serving_size = data.get("servingSize", {})
+    servings = serving_size.get("quantity", {}).get("value", "")
+    servings_unit = serving_size.get("unitNotation", "")
+    
+    # Header
+    print()
+    print("╔" + "═" * 58 + "╗")
+    print(f"║  {title[:54]:<54}  ║")
+    print("╠" + "═" * 58 + "╣")
+    
+    info_line = []
+    if difficulty_str:
+        info_line.append(f"📊 {difficulty_str}")
+    if total_time:
+        info_line.append(f"⏱ {total_time} Min")
+    if servings:
+        info_line.append(f"🍽 {servings} {servings_unit}")
+    
+    info_str = "  │  ".join(info_line)
+    print(f"║  {info_str:<54}  ║")
+    print("╚" + "═" * 58 + "╝")
+    print()
+    
+    # URL
+    print(f"🔗 https://cookidoo.de/recipes/recipe/{LOCALE}/{recipe_id}")
+    print()
+    
+    # Ingredients
+    print("📝 ZUTATEN")
+    print("─" * 40)
+    for group in data.get("recipeIngredientGroups", []):
+        group_title = group.get("title", "")
+        if group_title:
+            print(f"\n  {group_title}:")
+        
+        for ing in group.get("recipeIngredients", []):
+            qty = ing.get("quantity", {}).get("value", "")
+            unit = ing.get("unitNotation", "")
+            name = ing.get("ingredientNotation", "")
+            prep = ing.get("preparation", "")
+            optional = ing.get("optional", False)
+            
+            # Format quantity
+            if qty:
+                if qty == int(qty):
+                    qty_str = str(int(qty))
+                else:
+                    qty_str = f"{qty:.1f}"
+            else:
+                qty_str = ""
+            
+            # Build ingredient line
+            parts = []
+            if qty_str:
+                parts.append(qty_str)
+            if unit:
+                parts.append(unit)
+            parts.append(name)
+            if prep:
+                parts.append(f"({prep})")
+            if optional:
+                parts.append("(optional)")
+            
+            print(f"  • {' '.join(parts)}")
+    print()
+    
+    # Steps
+    print("👨‍🍳 ZUBEREITUNG")
+    print("─" * 40)
+    step_num = 1
+    for group in data.get("recipeStepGroups", []):
+        group_title = group.get("title", "")
+        if group_title:
+            print(f"\n  {group_title}:")
+        
+        for step in group.get("recipeSteps", []):
+            text = step.get("formattedText", "")
+            # Clean up HTML tags
+            text = re.sub(r'<[^>]+>', '', text)
+            text = text.replace('&nbsp;', ' ').strip()
+            
+            # Wrap long text
+            if len(text) > 60:
+                words = text.split()
+                lines = []
+                current_line = []
+                for word in words:
+                    if len(' '.join(current_line + [word])) > 55:
+                        lines.append(' '.join(current_line))
+                        current_line = [word]
+                    else:
+                        current_line.append(word)
+                if current_line:
+                    lines.append(' '.join(current_line))
+                
+                print(f"\n  {step_num}. {lines[0]}")
+                for line in lines[1:]:
+                    print(f"     {line}")
+            else:
+                print(f"\n  {step_num}. {text}")
+            
+            step_num += 1
+    print()
+    
+    # Nutrition (if available)
+    nutrition_groups = data.get("nutritionGroups", [])
+    if nutrition_groups:
+        print("🥗 NÄHRWERTE (pro Portion)")
+        print("─" * 40)
+        for ng in nutrition_groups:
+            for item in ng.get("nutritionItems", []):
+                name = item.get("title", "")
+                value = item.get("value", "")
+                unit = item.get("unit", "")
+                if name and value:
+                    print(f"  • {name}: {value} {unit}")
+        print()
+
+
 def cmd_status(args):
     """Show status of CLI and cookies."""
     print()
@@ -1538,7 +1717,7 @@ _tmx_completion() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="plan search today shopping status cache login completion"
+    local commands="plan search recipe today shopping status cache login completion"
     local plan_cmds="show sync add remove move"
     local shopping_cmds="show add add-item from-plan remove clear export"
     local cache_cmds="clear"
@@ -1629,6 +1808,7 @@ _tmx() {
             commands=(
                 'plan:Wochenplan verwalten'
                 'search:Rezepte in Cookidoo suchen'
+                'recipe:Rezeptdetails anzeigen'
                 'today:Heutige Rezepte anzeigen'
                 'shopping:Einkaufsliste verwalten'
                 'status:Status anzeigen'
@@ -1695,6 +1875,9 @@ _tmx() {
                 search)
                     _arguments '1:query' '--limit[Anzahl]:limit' '-n[Anzahl]:limit'
                     ;;
+                recipe)
+                    _arguments '1:recipe_id'
+                    ;;
                 login)
                     _arguments '--email[E-Mail]:email' '-e[E-Mail]:email' '--password[Passwort]:password' '-p[Passwort]:password'
                     ;;
@@ -1712,7 +1895,7 @@ compdef _tmx tmx
 FISH_COMPLETION = '''
 # tmx completions for fish
 
-set -l commands plan search today shopping status cache login completion
+set -l commands plan search recipe today shopping status cache login completion
 set -l plan_cmds show sync add remove move
 set -l shopping_cmds show add add-item from-plan remove clear export
 set -l cache_cmds clear
@@ -1720,6 +1903,7 @@ set -l cache_cmds clear
 complete -c tmx -f
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "plan" -d "Wochenplan verwalten"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "search" -d "Rezepte suchen"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "recipe" -d "Rezeptdetails"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "today" -d "Heutige Rezepte"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "shopping" -d "Einkaufsliste"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "status" -d "Status anzeigen"
@@ -1838,6 +2022,11 @@ def build_parser():
     search_parser.add_argument("query", help="Suchbegriff")
     search_parser.add_argument("-n", "--limit", type=int, default=10, help="Anzahl Ergebnisse (default: 10)")
     search_parser.set_defaults(func=cmd_search)
+    
+    # recipe command
+    recipe_parser = sub.add_parser("recipe", help="Rezeptdetails anzeigen")
+    recipe_parser.add_argument("recipe_id", help="Rezept-ID (z.B. r130616)")
+    recipe_parser.set_defaults(func=cmd_recipe)
     
     # today command
     today_parser = sub.add_parser("today", help="Heutige Rezepte anzeigen")
