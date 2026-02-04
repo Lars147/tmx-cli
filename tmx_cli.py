@@ -717,11 +717,9 @@ def clear_shopping_list() -> tuple[bool, str]:
     if not is_authenticated(cookies):
         return False, "Nicht eingeloggt"
     
-    cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
-    
     url = "https://cookidoo.de/shopping/de-DE"
     headers = {
-        "Cookie": cookie_str,
+        "Cookie": format_cookie_header(cookies),
         "Accept": "application/json",
     }
     
@@ -731,6 +729,34 @@ def clear_shopping_list() -> tuple[bool, str]:
         with urllib.request.urlopen(req, context=ctx) as resp:
             if resp.status == 200:
                 return True, "Einkaufsliste geleert"
+            return False, f"Unerwarteter Status: {resp.status}"
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP-Fehler: {e.code}"
+    except Exception as e:
+        return False, str(e)
+
+
+def add_custom_item_to_shopping_list(item_name: str) -> tuple[bool, str]:
+    """Add a custom item (not from a recipe) to the shopping list."""
+    cookies = load_cookies()
+    if not is_authenticated(cookies):
+        return False, "Nicht eingeloggt"
+    
+    url = "https://cookidoo.de/shopping/de-DE/additional-item"
+    headers = {
+        "Cookie": format_cookie_header(cookies),
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    
+    payload = json.dumps({"itemValue": item_name}).encode("utf-8")
+    
+    try:
+        req = urllib.request.Request(url, data=payload, method="POST", headers=headers)
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, context=ctx) as resp:
+            if resp.status in (200, 201):
+                return True, f"'{item_name}' hinzugefügt"
             return False, f"Unerwarteter Status: {resp.status}"
     except urllib.error.HTTPError as e:
         return False, f"HTTP-Fehler: {e.code}"
@@ -1300,6 +1326,28 @@ def cmd_shopping_add(args):
     print()
 
 
+def cmd_shopping_add_item(args):
+    """Add a custom item to the shopping list."""
+    items = args.items
+    
+    print()
+    print(f"🛒 Füge {len(items)} Artikel zur Einkaufsliste hinzu...")
+    
+    added = 0
+    for item in items:
+        success, message = add_custom_item_to_shopping_list(item)
+        if success:
+            print(f"  ✅ {item}")
+            added += 1
+        else:
+            print(f"  ❌ {item}: {message}")
+    
+    print()
+    if added:
+        print(f"✅ {added} Artikel hinzugefügt")
+    print()
+
+
 def cmd_shopping_remove(args):
     """Remove a recipe from the shopping list."""
     recipe_id = args.recipe_id
@@ -1492,7 +1540,7 @@ _tmx_completion() {
 
     local commands="plan search today shopping status cache login completion"
     local plan_cmds="show sync add remove move"
-    local shopping_cmds="show add from-plan remove clear export"
+    local shopping_cmds="show add add-item from-plan remove clear export"
     local cache_cmds="clear"
 
     # Get the main command and subcommand
@@ -1615,7 +1663,7 @@ _tmx() {
                     case "$state" in
                         shop_cmd)
                             local -a shop_cmds
-                            shop_cmds=(show add from-plan remove clear export)
+                            shop_cmds=(show add add-item from-plan remove clear export)
                             _describe 'shopping command' shop_cmds
                             ;;
                         shop_args)
@@ -1666,7 +1714,7 @@ FISH_COMPLETION = '''
 
 set -l commands plan search today shopping status cache login completion
 set -l plan_cmds show sync add remove move
-set -l shopping_cmds show add from-plan remove clear export
+set -l shopping_cmds show add add-item from-plan remove clear export
 set -l cache_cmds clear
 
 complete -c tmx -f
@@ -1694,7 +1742,8 @@ complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand
 
 # shopping subcommands and options
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "show" -d "Anzeigen"
-complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "add" -d "Hinzufügen"
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "add" -d "Rezepte hinzufügen"
+complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "add-item" -d "Eigene Artikel"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "from-plan" -d "Aus Plan"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "remove" -d "Entfernen"
 complete -c tmx -n "__fish_seen_subcommand_from shopping; and not __fish_seen_subcommand_from $shopping_cmds" -a "clear" -d "Leeren"
@@ -1805,6 +1854,10 @@ def build_parser():
     shopping_add = shopping_sub.add_parser("add", help="Rezepte zur Einkaufsliste hinzufügen")
     shopping_add.add_argument("recipe_ids", nargs="+", help="Rezept-IDs (z.B. r130616 r123456)")
     shopping_add.set_defaults(func=cmd_shopping_add)
+    
+    shopping_add_item = shopping_sub.add_parser("add-item", help="Eigene Artikel hinzufügen (ohne Rezept)")
+    shopping_add_item.add_argument("items", nargs="+", help="Artikelname(n) (z.B. 'Milch' 'Brot')")
+    shopping_add_item.set_defaults(func=cmd_shopping_add_item)
     
     shopping_from_plan = shopping_sub.add_parser("from-plan", help="Rezepte aus dem Wochenplan hinzufügen")
     shopping_from_plan.add_argument("--days", "-d", type=int, default=7, help="Anzahl Tage (default: 7)")
