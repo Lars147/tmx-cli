@@ -469,7 +469,13 @@ def get_search_token(cookies: dict[str, str]) -> Optional[str]:
         return None
 
 
-def search_recipes(query: str, limit: int = 10) -> tuple[list[dict], int]:
+def search_recipes(
+    query: str, 
+    limit: int = 10,
+    max_time: Optional[int] = None,  # max time in minutes
+    difficulty: Optional[str] = None,  # easy, medium, advanced
+    tm_version: Optional[str] = None,  # TM5, TM6, TM7
+) -> tuple[list[dict], int]:
     """
     Search Cookidoo recipes via Algolia.
     Returns (results, total_count).
@@ -485,10 +491,24 @@ def search_recipes(query: str, limit: int = 10) -> tuple[list[dict], int]:
     # Algolia search API
     url = f"https://{ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/{ALGOLIA_INDEX}/query"
     
-    query_data = json.dumps({
+    # Build filters
+    filters = []
+    if max_time:
+        # Convert minutes to seconds for Algolia
+        filters.append(f"totalTime <= {max_time * 60}")
+    if difficulty:
+        filters.append(f"difficulty:{difficulty}")
+    if tm_version:
+        filters.append(f"tmversion:{tm_version}")
+    
+    search_params = {
         "query": query,
         "hitsPerPage": limit,
-    }).encode("utf-8")
+    }
+    if filters:
+        search_params["filters"] = " AND ".join(filters)
+    
+    query_data = json.dumps(search_params).encode("utf-8")
     
     headers = {
         "X-Algolia-Application-Id": ALGOLIA_APP_ID,
@@ -1008,9 +1028,24 @@ def cmd_search(args):
     """Search Cookidoo recipes via Algolia."""
     query = args.query
     limit = getattr(args, 'limit', 10)
+    max_time = getattr(args, 'time', None)
+    difficulty = getattr(args, 'difficulty', None)
+    tm_version = getattr(args, 'tm', None)
     
     print()
     print(f"🔍 Suche in Cookidoo: '{query}'")
+    
+    # Show active filters
+    filter_parts = []
+    if max_time:
+        filter_parts.append(f"≤{max_time} Min")
+    if difficulty:
+        filter_parts.append(difficulty)
+    if tm_version:
+        filter_parts.append(tm_version)
+    if filter_parts:
+        print(f"   Filter: {', '.join(filter_parts)}")
+    
     print("─" * 50)
     
     cookies = load_cookies()
@@ -1018,7 +1053,7 @@ def cmd_search(args):
         print("❌ Nicht eingeloggt. Führe zuerst 'tmx login' aus.")
         return
     
-    results, total = search_recipes(query, limit)
+    results, total = search_recipes(query, limit, max_time, difficulty, tm_version)
     
     if not results:
         print("Keine Rezepte gefunden.")
@@ -1753,7 +1788,7 @@ _tmx_completion() {
                     from-plan) COMPREPLY=($(compgen -W "--days -d --help" -- "${cur}")) ;;
                     *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
                 esac ;;
-            search) COMPREPLY=($(compgen -W "--limit -n --help" -- "${cur}")) ;;
+            search) COMPREPLY=($(compgen -W "--limit -n --time -t --difficulty -d --tm --help" -- "${cur}")) ;;
             cache)
                 case "$subcmd" in
                     clear) COMPREPLY=($(compgen -W "--all -a --help" -- "${cur}")) ;;
@@ -1873,7 +1908,7 @@ _tmx() {
                     esac
                     ;;
                 search)
-                    _arguments '1:query' '--limit[Anzahl]:limit' '-n[Anzahl]:limit'
+                    _arguments '1:query' '--limit[Anzahl]:limit' '-n[Anzahl]:limit' '--time[Max. Zeit]:minutes' '-t[Max. Zeit]:minutes' '--difficulty[Schwierigkeit]:difficulty:(easy medium advanced)' '-d[Schwierigkeit]:difficulty:(easy medium advanced)' '--tm[Thermomix]:version:(TM5 TM6 TM7)'
                     ;;
                 recipe)
                     _arguments '1:recipe_id'
@@ -1944,6 +1979,9 @@ complete -c tmx -n "__fish_seen_subcommand_from cache; and __fish_seen_subcomman
 
 # search options
 complete -c tmx -n "__fish_seen_subcommand_from search" -l limit -s n -d "Anzahl Ergebnisse"
+complete -c tmx -n "__fish_seen_subcommand_from search" -l time -s t -d "Max. Zeit (Min)"
+complete -c tmx -n "__fish_seen_subcommand_from search" -l difficulty -s d -d "Schwierigkeit" -a "easy medium advanced"
+complete -c tmx -n "__fish_seen_subcommand_from search" -l tm -d "Thermomix-Version" -a "TM5 TM6 TM7"
 
 # login options
 complete -c tmx -n "__fish_seen_subcommand_from login" -l email -s e -d "E-Mail"
@@ -2021,6 +2059,9 @@ def build_parser():
     search_parser = sub.add_parser("search", help="Rezepte in Cookidoo suchen")
     search_parser.add_argument("query", help="Suchbegriff")
     search_parser.add_argument("-n", "--limit", type=int, default=10, help="Anzahl Ergebnisse (default: 10)")
+    search_parser.add_argument("-t", "--time", type=int, help="Max. Zubereitungszeit in Minuten")
+    search_parser.add_argument("-d", "--difficulty", choices=["easy", "medium", "advanced"], help="Schwierigkeitsgrad")
+    search_parser.add_argument("--tm", choices=["TM5", "TM6", "TM7"], help="Thermomix-Version")
     search_parser.set_defaults(func=cmd_search)
     
     # recipe command

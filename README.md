@@ -96,8 +96,12 @@ tmx plan sync -s 2026-02-01 -d 21   # 21 days from date
 
 ### Search Recipes
 ```bash
-tmx search "Pasta"                  # Search recipes
-tmx search "vegetarisch Curry" -n 20  # More results
+tmx search "Pasta"                     # Search recipes
+tmx search "Curry" -n 20               # More results
+tmx search "Salat" --time 15           # Max 15 minutes
+tmx search "Kuchen" --difficulty easy  # Easy recipes only
+tmx search "Suppe" --tm TM6            # TM6 recipes only
+tmx search "Pasta" -t 30 -d easy       # Combine filters
 ```
 
 ### Recipe Details
