@@ -712,24 +712,30 @@ def remove_recipe_from_shopping_list(recipe_id: str) -> tuple[bool, str]:
 
 
 def clear_shopping_list() -> tuple[bool, str]:
-    """Remove all recipes from the shopping list."""
-    data = get_shopping_list()
-    if not data:
-        return False, "Konnte Einkaufsliste nicht laden"
+    """Clear the entire shopping list (recipes and additional items)."""
+    cookies = load_cookies()
+    if not is_authenticated(cookies):
+        return False, "Nicht eingeloggt"
     
-    recipes = data.get("recipes", [])
-    if not recipes:
-        return True, "Einkaufsliste ist bereits leer"
+    cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
     
-    removed = 0
-    for recipe in recipes:
-        recipe_id = recipe.get("id")
-        if recipe_id:
-            success, _ = remove_recipe_from_shopping_list(recipe_id)
-            if success:
-                removed += 1
+    url = "https://cookidoo.de/shopping/de-DE"
+    headers = {
+        "Cookie": cookie_str,
+        "Accept": "application/json",
+    }
     
-    return True, f"{removed} Rezept(e) entfernt"
+    try:
+        req = urllib.request.Request(url, method="DELETE", headers=headers)
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, context=ctx) as resp:
+            if resp.status == 200:
+                return True, "Einkaufsliste geleert"
+            return False, f"Unerwarteter Status: {resp.status}"
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP-Fehler: {e.code}"
+    except Exception as e:
+        return False, str(e)
 
 
 def parse_shopping_ingredients(shopping_data: dict) -> list[dict]:
