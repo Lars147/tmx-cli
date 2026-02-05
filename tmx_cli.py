@@ -1288,7 +1288,7 @@ def cmd_plan_show(args):
         
         # Day header
         if is_today:
-            print(f"▶ \033[1m{day_name} {day_number}.\033[0m  ({date})  ← heute")
+            print(f"▶ \033[1m{day_name} {day_number}.\033[0m  ({date})")
         else:
             print(f"  {day_name} {day_number}.  ({date})")
         
