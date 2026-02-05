@@ -1250,6 +1250,9 @@ def cmd_plan_show(args):
         print("Keine Tage im Wochenplan gefunden.")
         return
     
+    # Get today's date for dynamic "heute" marker
+    today_str = dt.date.today().isoformat()
+    
     # Header
     print()
     print("╔" + "═" * 58 + "╗")
@@ -1264,7 +1267,8 @@ def cmd_plan_show(args):
         date = day.get("date", "")
         day_name = day.get("dayName", "")
         day_number = day.get("dayNumber", "")
-        is_today = day.get("isToday", False)
+        # Dynamic "heute" check based on current date, not cached value
+        is_today = (date == today_str)
         recipes = day.get("recipes", [])
         
         # Day header
@@ -1356,8 +1360,9 @@ def cmd_today(args):
     today_str = dt.date.today().isoformat()
     today = None
     
+    # Only match by actual date, not cached isToday flag
     for day in days:
-        if day.get("date") == today_str or day.get("isToday"):
+        if day.get("date") == today_str:
             today = day
             break
     
