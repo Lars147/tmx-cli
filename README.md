@@ -5,7 +5,7 @@
 <h1 align="center">tmx-cli</h1>
 
 <p align="center">
-  <strong>🍳 Dein Thermomix®/Cookidoo® im Terminal — Wochenplan, Rezepte, Einkaufslisten</strong>
+  <strong>🍳 Your Thermomix®/Cookidoo® in the terminal — meal plans, recipes, shopping lists</strong>
 </p>
 
 <p align="center">
@@ -25,25 +25,21 @@
 
 ---
 
-## Was ist das?
+## What is this?
 
-**tmx-cli** bringt Cookidoo® ins Terminal. Kein Browser-Gefummel mehr — verwalte deinen Wochenplan, durchsuche 24.000+ Rezepte und erstelle Einkaufslisten direkt von der Kommandozeile.
+**tmx-cli** brings Cookidoo® to your terminal. No more browser hassle — manage your weekly meal plan, search 24,000+ recipes, and generate shopping lists directly from the command line.
 
-**Warum ist das cool?**
-- ⚡ **Schneller** — Keine lahmen Web-Apps, alles instant
-- 🔧 **Hackbar** — Pipe Rezepte in andere Tools, automatisiere deine Meal-Prep
-- 📦 **Zero Dependencies** — Pure Python, funktioniert überall
-- 🖥️ **Terminal-Native** — Perfekt für Power-User und Entwickler
+It's fast (no slow web apps), hackable (pipe recipes into other tools, automate your meal prep), and runs anywhere with zero dependencies — just pure Python standard library.
 
 ---
 
 ## 🚀 Quick Start
 
 ```bash
-# Mit uvx (empfohlen) — läuft sofort ohne Installation
+# With uvx (recommended) — runs instantly without installation
 uvx --from git+https://github.com/Lars147/tmx-cli tmx login
 
-# Einloggen, dann loslegen!
+# Log in, then get started!
 uvx --from git+https://github.com/Lars147/tmx-cli tmx search "Pasta"
 ```
 
@@ -51,22 +47,22 @@ uvx --from git+https://github.com/Lars147/tmx-cli tmx search "Pasta"
 
 ## ✨ Features
 
-| Feature | Beschreibung |
+| Feature | Description |
 |---------|-------------|
-| 🔐 **Login** | Sichere OAuth-Authentifizierung mit deinem Cookidoo-Account |
-| 📅 **Wochenplan** | Anzeigen, synchronisieren, Rezepte hinzufügen/verschieben |
-| 🔍 **Suche** | 24.000+ Rezepte durchsuchen mit Filtern (Zeit, Schwierigkeit, Kategorie) |
-| ❤️ **Favoriten** | Deine Lieblingsrezepte verwalten |
-| 📖 **Rezeptdetails** | Zutaten, Schritte, Nährwerte — alles im Terminal |
-| 🛒 **Einkaufsliste** | Automatisch generieren, exportieren (Markdown/JSON) |
-| ⚡ **Shell Completion** | Tab-Completion für Bash, Zsh, Fish |
-| 📦 **Zero Deps** | Nur Python Standard Library, keine Abhängigkeiten |
+| 🔐 **Login** | Secure OAuth authentication with your Cookidoo account |
+| 📅 **Meal Plan** | View, sync, add/move recipes |
+| 🔍 **Search** | Browse 24,000+ recipes with filters (time, difficulty, category) |
+| ❤️ **Favorites** | Manage your favorite recipes |
+| 📖 **Recipe Details** | Ingredients, steps, nutrition — all in the terminal |
+| 🛒 **Shopping List** | Auto-generate, export (Markdown/JSON) |
+| ⚡ **Shell Completion** | Tab completion for Bash, Zsh, Fish |
+| 📦 **Zero Deps** | Python standard library only, no dependencies |
 
 ---
 
 ## 🎬 Demo
 
-### Wochenplan anzeigen
+### View meal plan
 
 ```
 $ tmx plan show
@@ -86,7 +82,7 @@ $ tmx plan show
     (keine Rezepte)
 ```
 
-### Rezepte suchen
+### Search recipes
 
 ```
 $ tmx search "Pasta" -n 3
@@ -108,7 +104,7 @@ Gefunden: 24044 Rezepte (zeige 3)
       https://cookidoo.de/recipes/recipe/de-DE/r447830
 ```
 
-### Rezeptdetails abrufen
+### Get recipe details
 
 ```
 $ tmx recipe r130616
@@ -147,7 +143,7 @@ $ tmx recipe r130616
   ...
 ```
 
-### Einkaufsliste generieren
+### Generate shopping list
 
 ```
 $ tmx shopping show
@@ -177,17 +173,17 @@ $ tmx shopping show
 
 ## 📦 Installation
 
-### Option 1: uvx (empfohlen)
+### Option 1: uvx (recommended)
 
 ```bash
-# Direkt ausführen — keine Installation nötig
+# Run directly — no installation needed
 uvx --from git+https://github.com/Lars147/tmx-cli tmx --help
 
-# Oder global installieren
+# Or install globally
 uv tool install git+https://github.com/Lars147/tmx-cli
 tmx --help
 
-# Update auf neueste Version
+# Update to latest version
 uv tool install --upgrade git+https://github.com/Lars147/tmx-cli
 ```
 
@@ -201,7 +197,7 @@ tmx --help
 pipx install --force git+https://github.com/Lars147/tmx-cli
 ```
 
-### Option 3: Repo klonen
+### Option 3: Clone the repo
 
 ```bash
 git clone https://github.com/Lars147/tmx-cli.git
@@ -213,151 +209,151 @@ python3 tmx_cli.py --help
 
 ## 📖 Usage
 
-### 🔐 Authentifizierung
+### 🔐 Authentication
 
 ```bash
-tmx login                                    # Interaktiv einloggen
-tmx login --email user@example.com --password secret  # Mit Credentials
-tmx status                                   # Login-Status prüfen
+tmx login                                    # Interactive login
+tmx login --email user@example.com --password secret  # With credentials
+tmx status                                   # Check login status
 ```
 
-### 📅 Wochenplan
+### 📅 Meal Plan
 
 ```bash
-tmx plan show                    # Plan anzeigen (aus Cache)
-tmx plan sync                    # Von Cookidoo synchronisieren
-tmx plan sync --days 7           # Nur nächste 7 Tage
-tmx plan sync --since 2026-02-01 # Ab bestimmtem Datum
-tmx today                        # Nur heutige Rezepte
+tmx plan show                    # Show plan (from cache)
+tmx plan sync                    # Sync from Cookidoo
+tmx plan sync --days 7           # Only next 7 days
+tmx plan sync --since 2026-02-01 # From specific date
+tmx today                        # Today's recipes only
 
-# Rezepte verwalten
-tmx plan add r130616 --date 2026-02-10       # Hinzufügen
-tmx plan remove r130616 --date 2026-02-10    # Entfernen
-tmx plan move r130616 --from 2026-02-10 --to 2026-02-15  # Verschieben
+# Manage recipes
+tmx plan add r130616 --date 2026-02-10       # Add
+tmx plan remove r130616 --date 2026-02-10    # Remove
+tmx plan move r130616 --from 2026-02-10 --to 2026-02-15  # Move
 ```
 
-### 🔍 Suche
+### 🔍 Search
 
 ```bash
-tmx search "Pasta"                      # Einfache Suche
-tmx search "Curry" -n 20                # Mehr Ergebnisse
-tmx search "Salat" --time 15            # Max 15 Minuten
-tmx search "Kuchen" --difficulty easy   # Nur einfache
-tmx search "Suppe" --tm TM6             # Nur TM6-Rezepte
-tmx search "" --category vegetarisch    # Nach Kategorie browsen
-tmx search "Pasta" -t 30 -d easy        # Filter kombinieren
+tmx search "Pasta"                      # Simple search
+tmx search "Curry" -n 20                # More results
+tmx search "Salat" --time 15            # Max 15 minutes
+tmx search "Kuchen" --difficulty easy   # Easy recipes only
+tmx search "Suppe" --tm TM6             # TM6 recipes only
+tmx search "" --category vegetarisch    # Browse by category
+tmx search "Pasta" -t 30 -d easy        # Combine filters
 ```
 
-### 📂 Kategorien
+### 📂 Categories
 
 ```bash
-tmx categories                  # Alle Kategorien auflisten
-tmx categories sync             # Aktuelle von Cookidoo holen
+tmx categories                  # List all categories
+tmx categories sync             # Fetch current from Cookidoo
 ```
 
-### 📖 Rezeptdetails
+### 📖 Recipe Details
 
 ```bash
-tmx recipe r130616              # Zutaten, Schritte, Nährwerte
+tmx recipe r130616              # Ingredients, steps, nutrition
 ```
 
-### ❤️ Favoriten
+### ❤️ Favorites
 
 ```bash
-tmx favorites                   # Alle Favoriten anzeigen
-tmx favorites add r130616       # Zu Favoriten hinzufügen
-tmx favorites remove r130616    # Aus Favoriten entfernen
+tmx favorites                   # Show all favorites
+tmx favorites add r130616       # Add to favorites
+tmx favorites remove r130616    # Remove from favorites
 ```
 
-### 🛒 Einkaufsliste
+### 🛒 Shopping List
 
 ```bash
-# Anzeigen
-tmx shopping show               # Aggregierte Liste
-tmx shopping show --by-recipe   # Gruppiert nach Rezept
+# View
+tmx shopping show               # Aggregated list
+tmx shopping show --by-recipe   # Grouped by recipe
 
-# Verwalten
-tmx shopping add r130616        # Rezept hinzufügen
-tmx shopping add-item "Milch" "Brot"  # Eigene Items hinzufügen
-tmx shopping from-plan          # Alle Rezepte aus Plan (7 Tage)
-tmx shopping from-plan -d 14    # Nächste 14 Tage
-tmx shopping remove r130616     # Rezept entfernen
-tmx shopping clear              # Liste leeren
+# Manage
+tmx shopping add r130616        # Add recipe
+tmx shopping add-item "Milk" "Bread"  # Add custom items
+tmx shopping from-plan          # All recipes from plan (7 days)
+tmx shopping from-plan -d 14    # Next 14 days
+tmx shopping remove r130616     # Remove recipe
+tmx shopping clear              # Clear list
 
-# Exportieren
-tmx shopping export                       # Text zu stdout
-tmx shopping export -f markdown           # Markdown mit Checkboxen
-tmx shopping export -f markdown -r        # Nach Rezept gruppiert
-tmx shopping export -f json -o list.json  # JSON in Datei
+# Export
+tmx shopping export                       # Text to stdout
+tmx shopping export -f markdown           # Markdown with checkboxes
+tmx shopping export -f markdown -r        # Grouped by recipe
+tmx shopping export -f json -o list.json  # JSON to file
 ```
 
 ### 🗑️ Cache
 
 ```bash
-tmx cache clear                 # Cache leeren
-tmx cache clear --all           # Auch Session (erfordert Re-Login)
+tmx cache clear                 # Clear cache
+tmx cache clear --all           # Also session (requires re-login)
 ```
 
 ### ⚡ Shell Completion
 
 ```bash
-# Bash (zu ~/.bashrc hinzufügen)
+# Bash (add to ~/.bashrc)
 eval "$(tmx completion bash)"
 
-# Zsh (zu ~/.zshrc hinzufügen)
+# Zsh (add to ~/.zshrc)
 eval "$(tmx completion zsh)"
 
-# Fish (einmalig ausführen)
+# Fish (run once)
 tmx completion fish > ~/.config/fish/completions/tmx.fish
 ```
 
 ---
 
-## 🔧 Wie es funktioniert
+## 🔧 How It Works
 
-| Komponente | Technologie |
-|------------|-------------|
-| Authentifizierung | Vorwerk/Cidaas OAuth Flow |
-| Wochenplan | Cookidoo Calendar API |
-| Rezeptsuche | Algolia (wie Cookidoo-Website) |
-| Speicherung | Lokale JSON-Dateien |
+| Component | Technology |
+|-----------|------------|
+| Authentication | Vorwerk/Cidaas OAuth Flow |
+| Meal Plan | Cookidoo Calendar API |
+| Recipe Search | Algolia (same as Cookidoo website) |
+| Storage | Local JSON files |
 
-### Dateien
+### Files
 
 ```
 ~/.tmx-cli/
 ├── cookidoo_cookies.json       # Session
-├── cookidoo_search_token.json  # Such-Token
-├── cookidoo_weekplan_raw.json  # Gecachter Plan
-└── cookidoo_categories.json    # Kategorien
+├── cookidoo_search_token.json  # Search token
+├── cookidoo_weekplan_raw.json  # Cached plan
+└── cookidoo_categories.json    # Categories
 ```
 
 ---
 
 ## 🤝 Contributing
 
-Beiträge sind willkommen! 
+Contributions are welcome!
 
-1. Fork das Repo
-2. Erstelle einen Feature-Branch (`git checkout -b feature/awesome`)
-3. Committe deine Änderungen (`git commit -m 'Add awesome feature'`)
-4. Push zum Branch (`git push origin feature/awesome`)
-5. Öffne einen Pull Request
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/awesome`)
+3. Commit your changes (`git commit -m 'Add awesome feature'`)
+4. Push to the branch (`git push origin feature/awesome`)
+5. Open a Pull Request
 
 ### Ideas & TODOs
 
-- [ ] Collections-Support
-- [ ] Meal-Plan Templates
-- [ ] Nährwert-Summierung
-- [ ] Recipe-Export (Markdown/PDF)
+- [ ] Collections support
+- [ ] Meal plan templates
+- [ ] Nutrition summary
+- [ ] Recipe export (Markdown/PDF)
 
 ---
 
 ## ⚠️ Disclaimer
 
-Dies ist ein **inoffizielles** Tool. Cookidoo® und Thermomix® sind eingetragene Marken der Vorwerk Gruppe.
+This is an **unofficial** tool. Cookidoo® and Thermomix® are registered trademarks of the Vorwerk Group.
 
-Dieses Projekt steht in keiner Verbindung zu Vorwerk und wird nicht von Vorwerk unterstützt oder gesponsert. Bitte respektiere die Nutzungsbedingungen von Cookidoo.
+This project is not affiliated with, endorsed, or sponsored by Vorwerk. Please respect Cookidoo's terms of service.
 
 ---
 
@@ -368,5 +364,5 @@ MIT © [Lars Heinen](https://github.com/Lars147)
 ---
 
 <p align="center">
-  <sub>Made with ❤️ for Thermomix-Nerds who live in the terminal</sub>
+  <sub>Made with ❤️ for Thermomix nerds who live in the terminal</sub>
 </p>
