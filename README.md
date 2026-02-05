@@ -57,6 +57,11 @@ uvx --from git+https://github.com/Lars147/tmx-cli tmx search "Pasta"
 | 🛒 **Shopping List** | Auto-generate, export (Markdown/JSON) |
 | ⚡ **Shell Completion** | Tab completion for Bash, Zsh, Fish |
 | 📦 **Zero Deps** | Python standard library only, no dependencies |
+| 🤖 **AI-Agent Friendly** | Perfect for Claude, Codex, OpenClaw & other AI assistants |
+
+### Works great with AI Agents
+
+The CLI approach makes tmx-cli ideal for AI coding assistants like **Claude Code**, **Codex**, or **OpenClaw**. Text-based, structured commands and parseable output mean AI agents can easily manage your meal planning for you — "add a vegetarian recipe to Thursday" just works.
 
 ---
 
