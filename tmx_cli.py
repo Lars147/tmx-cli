@@ -751,6 +751,13 @@ def format_time(seconds: Optional[int]) -> str:
     return f"{hours}h"
 
 
+def seconds_to_minutes(seconds: Optional[int]) -> Optional[int]:
+    """Convert seconds to minutes, return None if input is None/0."""
+    if not seconds:
+        return None
+    return seconds // 60
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Plan CRUD Operations
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1492,16 +1499,13 @@ def get_recipe_details(recipe_id: str) -> Optional[dict]:
         return {"error": str(e)}
 
 
-def cmd_recipe(args):
-    """Show recipe details."""
+def cmd_recipe_show(args):
+    """Show recipe details in a beautiful formatted output."""
     recipe_id = args.recipe_id
     
     # Ensure recipe_id starts with 'r'
     if not recipe_id.startswith('r'):
         recipe_id = f'r{recipe_id}'
-    
-    print()
-    print(f"🍳 Lade Rezept {recipe_id}...")
     
     data = get_recipe_details(recipe_id)
     
@@ -1513,53 +1517,122 @@ def cmd_recipe(args):
         print(f"❌ Fehler: {data['error']}")
         return
     
-    # Title and basic info
+    # Extract title
     title = data.get("title", "Unbekannt")
+    
+    # Difficulty mapping
     difficulty = data.get("difficulty", "")
-    difficulty_map = {"easy": "Einfach", "medium": "Mittel", "hard": "Schwer"}
+    difficulty_map = {"easy": "einfach", "medium": "mittel", "advanced": "schwer", "hard": "schwer"}
     difficulty_str = difficulty_map.get(difficulty, difficulty)
     
-    # Times
+    # Thermomix versions
+    tm_versions = data.get("thermomixVersions", [])
+    tm_str = ", ".join(tm_versions) if tm_versions else ""
+    
+    # Times (convert from seconds to minutes)
     times = data.get("times", [])
     active_time = None
     total_time = None
     for t in times:
         if t.get("type") == "activeTime":
-            active_time = t.get("quantity", {}).get("value", 0) // 60
+            active_time = seconds_to_minutes(t.get("quantity", {}).get("value", 0))
         elif t.get("type") == "totalTime":
-            total_time = t.get("quantity", {}).get("value", 0) // 60
+            total_time = seconds_to_minutes(t.get("quantity", {}).get("value", 0))
     
     # Servings
     serving_size = data.get("servingSize", {})
     servings = serving_size.get("quantity", {}).get("value", "")
-    servings_unit = serving_size.get("unitNotation", "")
+    if servings and servings == int(servings):
+        servings = int(servings)
     
-    # Header
+    # Nutrition data - parse the complex structure
+    nutrition = {}
+    for ng in data.get("nutritionGroups", []):
+        # Try new structure: recipeNutritions[].nutritions[]
+        for rn in ng.get("recipeNutritions", []):
+            for item in rn.get("nutritions", []):
+                ntype = item.get("type", "")
+                value = item.get("number", "")
+                unit = item.get("unittype", "")
+                if ntype and value:
+                    nutrition[ntype] = {"value": value, "unit": unit}
+        # Also try old structure: nutritionItems[]
+        for item in ng.get("nutritionItems", []):
+            key = item.get("key", "")
+            value = item.get("value", "")
+            unit = item.get("unit", "")
+            if key and value:
+                nutrition[key] = {"value": value, "unit": unit}
+    
+    # Build beautiful output
     print()
-    print("╔" + "═" * 58 + "╗")
-    print(f"║  {title[:54]:<54}  ║")
-    print("╠" + "═" * 58 + "╣")
     
-    info_line = []
-    if difficulty_str:
-        info_line.append(f"📊 {difficulty_str}")
+    # Title box
+    title_display = f"🍳 {title}"
+    box_width = max(42, len(title_display) + 4)
+    print("╔" + "═" * box_width + "╗")
+    print(f"║  {title_display:<{box_width - 2}}║")
+    print("╚" + "═" * box_width + "╝")
+    print()
+    
+    # Time info
+    time_parts = []
+    if active_time:
+        time_parts.append(f"{active_time} Min aktiv")
     if total_time:
-        info_line.append(f"⏱ {total_time} Min")
+        time_parts.append(f"{total_time} Min gesamt")
+    if time_parts:
+        print(f"⏱  {' | '.join(time_parts)}")
+    
+    # Servings
     if servings:
-        info_line.append(f"🍽 {servings} {servings_unit}")
+        print(f"👥  {servings} Portionen")
     
-    info_str = "  │  ".join(info_line)
-    print(f"║  {info_str:<54}  ║")
-    print("╚" + "═" * 58 + "╝")
+    # Difficulty and TM version
+    info_parts = []
+    if difficulty_str:
+        info_parts.append(f"Schwierigkeit: {difficulty_str}")
+    if tm_str:
+        info_parts.append(tm_str)
+    if info_parts:
+        print(f"📊  {' | '.join(info_parts)}")
+    
     print()
     
-    # URL
-    print(f"🔗 https://cookidoo.de/recipes/recipe/{LOCALE}/{recipe_id}")
-    print()
+    # Nutrition section
+    if nutrition:
+        print("── Nährwerte pro Portion ──────────────")
+        
+        # Calories (kcal key from API)
+        kcal = nutrition.get("kcal") or nutrition.get("calories") or nutrition.get("energyKcal")
+        if kcal:
+            print(f"🔥  {kcal['value']} {kcal['unit']}")
+        
+        # Macros line
+        macro_parts = []
+        protein = nutrition.get("protein")
+        carbs = nutrition.get("carb2") or nutrition.get("carbohydrate") or nutrition.get("carbohydrates")
+        fat = nutrition.get("fat")
+        
+        if protein:
+            macro_parts.append(f"🥩 {protein['value']}{protein['unit']} Protein")
+        if carbs:
+            macro_parts.append(f"🍞 {carbs['value']}{carbs['unit']} Carbs")
+        if fat:
+            macro_parts.append(f"🧈 {fat['value']}{fat['unit']} Fett")
+        
+        if macro_parts:
+            print(" | ".join(macro_parts))
+        
+        # Fiber if available (dietaryFibre key from API)
+        fiber = nutrition.get("dietaryFibre") or nutrition.get("fiber") or nutrition.get("fibre")
+        if fiber:
+            print(f"🌾  {fiber['value']}{fiber['unit']} Ballaststoffe")
+        
+        print()
     
-    # Ingredients
-    print("📝 ZUTATEN")
-    print("─" * 40)
+    # Ingredients section
+    print("── Zutaten ────────────────────────────")
     for group in data.get("recipeIngredientGroups", []):
         group_title = group.get("title", "")
         if group_title:
@@ -1593,60 +1666,13 @@ def cmd_recipe(args):
             if optional:
                 parts.append("(optional)")
             
-            print(f"  • {' '.join(parts)}")
+            print(f"• {' '.join(parts)}")
+    
     print()
     
-    # Steps
-    print("👨‍🍳 ZUBEREITUNG")
-    print("─" * 40)
-    step_num = 1
-    for group in data.get("recipeStepGroups", []):
-        group_title = group.get("title", "")
-        if group_title:
-            print(f"\n  {group_title}:")
-        
-        for step in group.get("recipeSteps", []):
-            text = step.get("formattedText", "")
-            # Clean up HTML tags
-            text = re.sub(r'<[^>]+>', '', text)
-            text = text.replace('&nbsp;', ' ').strip()
-            
-            # Wrap long text
-            if len(text) > 60:
-                words = text.split()
-                lines = []
-                current_line = []
-                for word in words:
-                    if len(' '.join(current_line + [word])) > 55:
-                        lines.append(' '.join(current_line))
-                        current_line = [word]
-                    else:
-                        current_line.append(word)
-                if current_line:
-                    lines.append(' '.join(current_line))
-                
-                print(f"\n  {step_num}. {lines[0]}")
-                for line in lines[1:]:
-                    print(f"     {line}")
-            else:
-                print(f"\n  {step_num}. {text}")
-            
-            step_num += 1
+    # URL
+    print(f"🔗 {COOKIDOO_BASE}/recipes/recipe/{LOCALE}/{recipe_id}")
     print()
-    
-    # Nutrition (if available)
-    nutrition_groups = data.get("nutritionGroups", [])
-    if nutrition_groups:
-        print("🥗 NÄHRWERTE (pro Portion)")
-        print("─" * 40)
-        for ng in nutrition_groups:
-            for item in ng.get("nutritionItems", []):
-                name = item.get("title", "")
-                value = item.get("value", "")
-                unit = item.get("unit", "")
-                if name and value:
-                    print(f"  • {name}: {value} {unit}")
-        print()
 
 
 def cmd_categories_show(args):
@@ -2655,10 +2681,17 @@ def build_parser():
     search_parser.add_argument("-c", "--category", choices=list(CATEGORIES.keys()), help="Kategorie")
     search_parser.set_defaults(func=cmd_search)
     
-    # recipe command
-    recipe_parser = sub.add_parser("recipe", help="Rezeptdetails anzeigen")
-    recipe_parser.add_argument("recipe_id", help="Rezept-ID (z.B. r130616)")
-    recipe_parser.set_defaults(func=cmd_recipe)
+    # recipe command with subcommands
+    recipe_parser = sub.add_parser("recipe", help="Rezept verwalten")
+    recipe_sub = recipe_parser.add_subparsers(dest="recipe_action")
+    
+    # recipe show
+    recipe_show = recipe_sub.add_parser("show", help="Rezeptdetails anzeigen")
+    recipe_show.add_argument("recipe_id", help="Rezept-ID (z.B. r130616)")
+    recipe_show.set_defaults(func=cmd_recipe_show)
+    
+    # Default: show help if no subcommand
+    recipe_parser.set_defaults(func=lambda args: recipe_parser.print_help())
     
     # categories command with subcommands
     categories_parser = sub.add_parser("categories", help="Kategorien verwalten")
