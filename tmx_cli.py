@@ -33,6 +33,7 @@ from typing import Optional
 SCRIPT_DIR = Path(__file__).parent
 WEEKPLAN_JSON = SCRIPT_DIR / "cookidoo_weekplan_raw.json"
 COOKIES_FILE = SCRIPT_DIR / "cookidoo_cookies.json"
+CONFIG_FILE = Path.home() / ".tmx_config.json"
 
 COOKIDOO_BASE = "https://cookidoo.de"
 LOCALE = "de-DE"
@@ -231,6 +232,27 @@ def sync_categories(progress_callback=None) -> tuple[dict[str, str], list[str]]:
 # Alias for backward compatibility
 CATEGORIES, _ = load_categories()
 CATEGORY_NAMES = {v: k for k, v in CATEGORIES.items()}  # Reverse lookup
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# User Config Management
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_config() -> dict:
+    """Load user config from ~/.tmx_config.json or return empty dict."""
+    if not CONFIG_FILE.exists():
+        return {}
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+
+def save_config(config: dict):
+    """Save user config to ~/.tmx_config.json."""
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1233,6 +1255,155 @@ def remove_from_favorites(recipe_id: str) -> tuple[bool, str]:
 # CLI Commands
 # ─────────────────────────────────────────────────────────────────────────────
 
+def cmd_setup(args):
+    """Interactive setup/onboarding for tmx-cli."""
+    reset = getattr(args, 'reset', False)
+    
+    print()
+    print("╔" + "═" * 50 + "╗")
+    print("║  ⚙️  TMX-CLI Setup" + " " * 31 + "║")
+    print("╚" + "═" * 50 + "╝")
+    print()
+    
+    # Reset config if requested
+    if reset:
+        if CONFIG_FILE.exists():
+            CONFIG_FILE.unlink()
+            print("✅ Konfiguration zurückgesetzt!")
+            print()
+        else:
+            print("ℹ️  Keine Konfiguration vorhanden.")
+            print()
+        return
+    
+    config = {}
+    
+    # Step 1: Thermomix Version
+    print("🔧 Welche Thermomix-Version hast du?")
+    print()
+    print("  1) TM5")
+    print("  2) TM6")
+    print("  3) TM7")
+    print()
+    
+    while True:
+        choice = input("Auswahl [1-3]: ").strip()
+        if choice == "1":
+            config['tm_version'] = "TM5"
+            break
+        elif choice == "2":
+            config['tm_version'] = "TM6"
+            break
+        elif choice == "3":
+            config['tm_version'] = "TM7"
+            break
+        else:
+            print("❌ Bitte wähle 1, 2 oder 3")
+    
+    print(f"  → {config['tm_version']} ausgewählt")
+    print()
+    
+    # Step 2: Diet preference (optional)
+    print("🥗 Ernährungspräferenz? (optional)")
+    print()
+    print("  1) Vegetarisch")
+    print("  2) Vegan")
+    print("  3) Keine Einschränkung")
+    print()
+    
+    while True:
+        choice = input("Auswahl [1-3, Enter für 3]: ").strip()
+        if choice == "" or choice == "3":
+            config['diet'] = None
+            print("  → Keine Einschränkung")
+            break
+        elif choice == "1":
+            config['diet'] = "vegetarisch"
+            print("  → Vegetarisch ausgewählt")
+            break
+        elif choice == "2":
+            config['diet'] = "vegan"
+            print("  → Vegan ausgewählt")
+            break
+        else:
+            print("❌ Bitte wähle 1, 2 oder 3")
+    
+    print()
+    
+    # Step 3: Max preparation time
+    print("⏱️  Maximale Zubereitungszeit als Standard?")
+    print()
+    print("  1) 15 Minuten")
+    print("  2) 30 Minuten")
+    print("  3) 45 Minuten")
+    print("  4) 60 Minuten")
+    print("  5) Keine Begrenzung")
+    print()
+    
+    while True:
+        choice = input("Auswahl [1-5, Enter für 5]: ").strip()
+        if choice == "" or choice == "5":
+            config['max_time'] = None
+            print("  → Keine Zeitbegrenzung")
+            break
+        elif choice == "1":
+            config['max_time'] = 15
+            print("  → Max. 15 Minuten")
+            break
+        elif choice == "2":
+            config['max_time'] = 30
+            print("  → Max. 30 Minuten")
+            break
+        elif choice == "3":
+            config['max_time'] = 45
+            print("  → Max. 45 Minuten")
+            break
+        elif choice == "4":
+            config['max_time'] = 60
+            print("  → Max. 60 Minuten")
+            break
+        else:
+            print("❌ Bitte wähle 1-5")
+    
+    print()
+    
+    # Save config
+    save_config(config)
+    
+    # Summary
+    print("╔" + "═" * 50 + "╗")
+    print("║  ✅ Konfiguration gespeichert!" + " " * 19 + "║")
+    print("╠" + "═" * 50 + "╣")
+    
+    # TM Version
+    tm_line = f"║  🔧 Thermomix: {config['tm_version']}"
+    print(tm_line + " " * (51 - len(tm_line)) + "║")
+    
+    # Diet
+    diet_display = config.get('diet') or "Keine Einschränkung"
+    diet_line = f"║  🥗 Ernährung: {diet_display}"
+    print(diet_line + " " * (51 - len(diet_line)) + "║")
+    
+    # Max time
+    time_display = f"{config['max_time']} Min" if config.get('max_time') else "Keine Begrenzung"
+    time_line = f"║  ⏱️  Max. Zeit: {time_display}"
+    print(time_line + " " * (51 - len(time_line)) + "║")
+    
+    print("╠" + "═" * 50 + "╣")
+    config_path_line = f"║  📁 {CONFIG_FILE}"
+    # Truncate path if too long
+    if len(config_path_line) > 50:
+        config_path_line = f"║  📁 ~/.tmx_config.json"
+    print(config_path_line + " " * (51 - len(config_path_line)) + "║")
+    print("╚" + "═" * 50 + "╝")
+    print()
+    print("Diese Einstellungen werden als Standardfilter bei")
+    print("'tmx search' verwendet. CLI-Flags überschreiben sie.")
+    print()
+    print("Zurücksetzen mit: tmx setup --reset")
+    print()
+
+
 def cmd_plan_show(args):
     """Show the current Cookidoo weekplan."""
     data = load_weekplan()
@@ -1418,10 +1589,37 @@ def cmd_search(args):
     """Search Cookidoo recipes via Algolia."""
     query = args.query
     limit = getattr(args, 'limit', 10)
+    
+    # Load config for defaults
+    config = load_config()
+    
+    # Show setup hint if no config exists
+    if not config and not CONFIG_FILE.exists():
+        print()
+        print("💡 Tipp: Führe 'tmx setup' aus um Standardfilter zu setzen")
+    
+    # CLI flags override config values
     max_time = getattr(args, 'time', None)
+    if max_time is None and config.get('max_time'):
+        max_time = config['max_time']
+    
     difficulty = getattr(args, 'difficulty', None)
+    # difficulty not in config for now
+    
     tm_version = getattr(args, 'tm', None)
+    if tm_version is None and config.get('tm_version'):
+        tm_version = config['tm_version']
+    
     category = getattr(args, 'category', None)
+    if category is None and config.get('diet'):
+        # Map diet preference to category filter
+        diet = config['diet']
+        if diet == 'vegetarisch':
+            category = 'vegetarisch'
+        elif diet == 'vegan':
+            # Note: Cookidoo doesn't have a dedicated vegan category
+            # but vegetarisch is the closest match
+            category = 'vegetarisch'
     
     print()
     print(f"🔍 Suche in Cookidoo: '{query}'")
@@ -2313,7 +2511,7 @@ _tmx_completion() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="plan search recipe categories favorites today shopping status cache login completion"
+    local commands="plan search recipe categories favorites today shopping status cache login setup completion"
     local plan_cmds="show sync add remove move"
     local shopping_cmds="show add add-item from-plan remove clear export"
     local cache_cmds="clear"
@@ -2360,6 +2558,7 @@ _tmx_completion() {
             categories) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
             favorites) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
             login) COMPREPLY=($(compgen -W "--email -e --password -p --help" -- "${cur}")) ;;
+            setup) COMPREPLY=($(compgen -W "--reset --help" -- "${cur}")) ;;
             *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
         esac
         return
@@ -2418,6 +2617,7 @@ _tmx() {
                 'status:Status anzeigen'
                 'cache:Cache verwalten'
                 'login:Bei Cookidoo einloggen'
+                'setup:Interaktives Onboarding/Setup'
                 'completion:Shell-Completion ausgeben'
             )
             _describe 'command' commands
@@ -2518,6 +2718,9 @@ _tmx() {
                 login)
                     _arguments '--email[E-Mail]:email' '-e[E-Mail]:email' '--password[Passwort]:password' '-p[Passwort]:password'
                     ;;
+                setup)
+                    _arguments '--reset[Konfiguration zurücksetzen]'
+                    ;;
                 completion)
                     _arguments '1:shell:(bash zsh fish)'
                     ;;
@@ -2532,7 +2735,7 @@ compdef _tmx tmx
 FISH_COMPLETION = '''
 # tmx completions for fish
 
-set -l commands plan search recipe categories favorites today shopping status cache login completion
+set -l commands plan search recipe categories favorites today shopping status cache login setup completion
 set -l plan_cmds show sync add remove move
 set -l shopping_cmds show add add-item from-plan remove clear export
 set -l cache_cmds clear
@@ -2602,6 +2805,10 @@ complete -c tmx -n "__fish_seen_subcommand_from search" -l category -s c -d "Kat
 # login options
 complete -c tmx -n "__fish_seen_subcommand_from login" -l email -s e -d "E-Mail"
 complete -c tmx -n "__fish_seen_subcommand_from login" -l password -s p -d "Passwort"
+
+# setup options
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "setup" -d "Interaktives Setup"
+complete -c tmx -n "__fish_seen_subcommand_from setup" -l reset -d "Konfiguration zurücksetzen"
 
 # completion
 complete -c tmx -n "__fish_seen_subcommand_from completion" -a "bash zsh fish" -d "Shell"
@@ -2778,6 +2985,11 @@ def build_parser():
     login_parser.add_argument("--email", "-e", help="E-Mail-Adresse")
     login_parser.add_argument("--password", "-p", help="Passwort")
     login_parser.set_defaults(func=cmd_login)
+    
+    # setup command
+    setup_parser = sub.add_parser("setup", help="Interaktives Onboarding/Setup")
+    setup_parser.add_argument("--reset", action="store_true", help="Konfiguration zurücksetzen")
+    setup_parser.set_defaults(func=cmd_setup)
     
     # completion command
     completion_parser = sub.add_parser("completion", help="Shell-Completion ausgeben")
