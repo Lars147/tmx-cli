@@ -1263,13 +1263,28 @@ def cmd_plan_show(args):
     print("╚" + "═" * 58 + "╝")
     print()
     
+    # German weekday names
+    WEEKDAYS_DE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+    today_date = dt.date.today()
+    
     for day in days:
         date = day.get("date", "")
-        day_name = day.get("dayName", "")
-        day_number = day.get("dayNumber", "")
-        # Dynamic "heute" check based on current date, not cached value
-        is_today = (date == today_str)
         recipes = day.get("recipes", [])
+        
+        # Dynamically calculate day name and number from date
+        try:
+            day_date = dt.date.fromisoformat(date)
+            day_number = day_date.day
+            is_today = (day_date == today_date)
+            if is_today:
+                day_name = "Heute"
+            else:
+                day_name = WEEKDAYS_DE[day_date.weekday()]
+        except (ValueError, TypeError):
+            # Fallback to cached values if date parsing fails
+            day_name = day.get("dayName", "")
+            day_number = day.get("dayNumber", "")
+            is_today = False
         
         # Day header
         if is_today:
