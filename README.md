@@ -49,9 +49,10 @@ uvx --from git+https://github.com/Lars147/tmx-cli tmx search "Pasta"
 
 | Feature | Description |
 |---------|-------------|
+| 🎯 **Setup** | Interactive onboarding — configure TM version, diet preferences, max cooking time |
 | 🔐 **Login** | Secure OAuth authentication with your Cookidoo account |
 | 📅 **Meal Plan** | View, sync, add/move recipes |
-| 🔍 **Search** | Browse 24,000+ recipes with filters (time, difficulty, category) |
+| 🔍 **Search** | Browse 24,000+ recipes with filters (time, difficulty, category) — auto-applies your config preferences |
 | ❤️ **Favorites** | Manage your favorite recipes |
 | 📖 **Recipe Details** | Ingredients, steps, nutrition — all in the terminal |
 | 🛒 **Shopping List** | Auto-generate, export (Markdown/JSON) |
@@ -214,6 +215,16 @@ python3 tmx_cli.py --help
 
 ## 📖 Usage
 
+### 🎯 Setup & Configuration
+
+```bash
+tmx setup                        # Interactive onboarding
+                                 # → TM version (TM5/TM6/TM7)
+                                 # → Diet preferences (vegetarian, vegan, etc.)
+                                 # → Max cooking time
+                                 # Searches automatically use these preferences!
+```
+
 ### 🔐 Authentication
 
 ```bash
@@ -247,6 +258,9 @@ tmx search "Kuchen" --difficulty easy   # Easy recipes only
 tmx search "Suppe" --tm TM6             # TM6 recipes only
 tmx search "" --category vegetarisch    # Browse by category
 tmx search "Pasta" -t 30 -d easy        # Combine filters
+
+# 💡 Pro tip: Run `tmx setup` once — searches will auto-apply your
+#    TM version, diet preferences, and max time filters!
 ```
 
 ### 📂 Categories
@@ -260,6 +274,7 @@ tmx categories sync             # Fetch current from Cookidoo
 
 ```bash
 tmx recipe r130616              # Ingredients, steps, nutrition
+tmx recipe show r130616         # Same — detailed view with nutrition info
 ```
 
 ### ❤️ Favorites
