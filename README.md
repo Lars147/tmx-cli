@@ -29,6 +29,8 @@
 
 **tmx-cli** brings Cookidoo® to your terminal. No more browser hassle — manage your weekly meal plan, search 24,000+ recipes, and generate shopping lists directly from the command line.
 
+> ⚠️ **Disclaimer:** This is a hobby project for personal use. Not officially affiliated with or endorsed by Vorwerk/Cookidoo®.
+
 It's fast (no slow web apps), hackable (pipe recipes into other tools, automate your meal prep), and runs anywhere with zero dependencies — just pure Python standard library.
 
 ---
