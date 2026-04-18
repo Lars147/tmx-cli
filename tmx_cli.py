@@ -1585,6 +1585,114 @@ def cmd_today(args):
         print()
 
 
+def cmd_history(args):
+    """Show cooking history based on past meal plans."""
+    days = getattr(args, 'days', 14)
+    show_empty = getattr(args, 'all', False)
+
+    cookies = load_cookies()
+    if not is_authenticated(cookies):
+        print("❌ Nicht eingeloggt. Führe 'tmx login' aus.")
+        return
+
+    today = dt.date.today()
+    start_date = today - dt.timedelta(days=days)
+
+    print()
+    print("╔" + "═" * 50 + "╗")
+    print("║  📜 KOCHHISTORIE" + " " * 33 + "║")
+    print("╚" + "═" * 50 + "╝")
+    print()
+    print(f"  Zeitraum: {start_date.isoformat()} bis {(today - dt.timedelta(days=1)).isoformat()}")
+    print()
+
+    # Fetch past weeks
+    all_days = []
+    seen_dates = set()
+    today_iso = today.isoformat()
+
+    WEEKDAYS_DE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+
+    # Calculate weeks needed
+    weeks_needed = (days // 7) + 2
+
+    for week_offset in range(weeks_needed):
+        week_start = start_date + dt.timedelta(weeks=week_offset)
+        if week_start >= today:
+            break
+
+        week_date = week_start.isoformat()
+        days_data = fetch_week(cookies, week_date, today_iso)
+
+        if not days_data:
+            continue
+
+        for day in days_data:
+            date = day.get("date")
+            if date and date not in seen_dates:
+                day_date = dt.date.fromisoformat(date)
+                # Only include past days (not today, not future)
+                if start_date <= day_date < today:
+                    seen_dates.add(date)
+                    all_days.append(day)
+
+    # Sort reverse chronological
+    all_days.sort(key=lambda d: d.get("date", ""), reverse=True)
+
+    if not all_days:
+        print("  Keine Daten für diesen Zeitraum gefunden.")
+        print("  Tipp: Stelle sicher, dass dein Plan synchronisiert ist ('tmx plan sync').")
+        print()
+        return
+
+    # Display
+    total_recipes = 0
+    recipe_counter = {}  # title -> count
+
+    for day in all_days:
+        date = day.get("date", "")
+        recipes = day.get("recipes", [])
+
+        if not recipes and not show_empty:
+            continue
+
+        # Format day header
+        try:
+            day_date = dt.date.fromisoformat(date)
+            day_name = WEEKDAYS_DE[day_date.weekday()]
+            day_number = day_date.day
+        except (ValueError, TypeError):
+            day_name = day.get("dayName", "")
+            day_number = day.get("dayNumber", "")
+
+        print(f"  {day_name} {day_number}.  ({date})")
+
+        if recipes:
+            for recipe in recipes:
+                title = recipe.get("title", "Unbekannt")
+                rid = recipe.get("id", "")
+                print(f"    • {title}  [{rid}]")
+                total_recipes += 1
+                recipe_counter[title] = recipe_counter.get(title, 0) + 1
+        else:
+            print("    (keine Rezepte)")
+
+        print()
+
+    # Summary
+    print("─" * 50)
+    print(f"  📊 {total_recipes} Rezepte in {days} Tagen")
+
+    if recipe_counter:
+        # Most frequent recipe
+        most_common = max(recipe_counter, key=recipe_counter.get)
+        count = recipe_counter[most_common]
+        if count > 1:
+            print(f"  🏆 Häufigstes: {most_common} ({count}x)")
+
+    print()
+
+
 def cmd_search(args):
     """Search Cookidoo recipes via Algolia."""
     query = args.query
@@ -2511,7 +2619,7 @@ _tmx_completion() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="plan search recipe categories favorites today shopping status cache login setup completion"
+    local commands="plan search recipe categories favorites today history shopping status cache login setup completion"
     local plan_cmds="show sync add remove move"
     local shopping_cmds="show add add-item from-plan remove clear export"
     local cache_cmds="clear"
@@ -2549,6 +2657,7 @@ _tmx_completion() {
                     from-plan) COMPREPLY=($(compgen -W "--days -d --help" -- "${cur}")) ;;
                     *) COMPREPLY=($(compgen -W "--help" -- "${cur}")) ;;
                 esac ;;
+            history) COMPREPLY=($(compgen -W "--days -d --all -a --help" -- "${cur}")) ;;
             search) COMPREPLY=($(compgen -W "--limit -n --time -t --difficulty -d --tm --category -c --help" -- "${cur}")) ;;
             cache)
                 case "$subcmd" in
@@ -2613,6 +2722,7 @@ _tmx() {
                 'categories:Kategorien verwalten'
                 'favorites:Favoriten verwalten'
                 'today:Heutige Rezepte anzeigen'
+                'history:Kochhistorie anzeigen'
                 'shopping:Einkaufsliste verwalten'
                 'status:Status anzeigen'
                 'cache:Cache verwalten'
@@ -2641,6 +2751,9 @@ _tmx() {
                             esac
                             ;;
                     esac
+                    ;;
+                history)
+                    _arguments '--days[Anzahl Tage]:days' '-d[Anzahl Tage]:days' '--all[Alle Tage]' '-a[Alle Tage]'
                     ;;
                 shopping)
                     _arguments -C '1: :->shop_cmd' '*:: :->shop_args'
@@ -2735,7 +2848,7 @@ compdef _tmx tmx
 FISH_COMPLETION = '''
 # tmx completions for fish
 
-set -l commands plan search recipe categories favorites today shopping status cache login setup completion
+set -l commands plan search recipe categories favorites today history shopping status cache login setup completion
 set -l plan_cmds show sync add remove move
 set -l shopping_cmds show add add-item from-plan remove clear export
 set -l cache_cmds clear
@@ -2749,6 +2862,7 @@ complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "recipe" -d "R
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "categories" -d "Kategorien verwalten"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "favorites" -d "Favoriten verwalten"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "today" -d "Heutige Rezepte"
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "history" -d "Kochhistorie"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "shopping" -d "Einkaufsliste"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "status" -d "Status anzeigen"
 complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "cache" -d "Cache verwalten"
@@ -2767,6 +2881,10 @@ complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand
 complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from remove" -l date -s d -d "Datum"
 complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from move" -l from -s f -d "Von Datum"
 complete -c tmx -n "__fish_seen_subcommand_from plan; and __fish_seen_subcommand_from move" -l to -s t -d "Nach Datum"
+
+# history options
+complete -c tmx -n "__fish_seen_subcommand_from history" -l days -s d -d "Anzahl Tage"
+complete -c tmx -n "__fish_seen_subcommand_from history" -l all -s a -d "Alle Tage"
 
 # categories subcommands
 complete -c tmx -n "__fish_seen_subcommand_from categories; and not __fish_seen_subcommand_from $categories_cmds" -a "show" -d "Kategorien anzeigen"
@@ -2934,7 +3052,13 @@ def build_parser():
     # today command
     today_parser = sub.add_parser("today", help="Heutige Rezepte anzeigen")
     today_parser.set_defaults(func=cmd_today)
-    
+
+    # history command
+    history_parser = sub.add_parser("history", help="Kochhistorie anzeigen (vergangene Wochenpläne)")
+    history_parser.add_argument("--days", "-d", type=int, default=14, help="Anzahl Tage zurück (default: 14)")
+    history_parser.add_argument("--all", "-a", action="store_true", help="Auch Tage ohne Rezepte anzeigen")
+    history_parser.set_defaults(func=cmd_history)
+
     # shopping command with subcommands
     shopping_parser = sub.add_parser("shopping", help="Einkaufsliste verwalten")
     shopping_sub = shopping_parser.add_subparsers(dest="shopping_action", required=True)
