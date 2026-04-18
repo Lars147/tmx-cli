@@ -31,9 +31,7 @@ from typing import Optional
 # ─────────────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR = Path(__file__).parent
-WEEKPLAN_JSON = SCRIPT_DIR / "cookidoo_weekplan_raw.json"
-COOKIES_FILE = SCRIPT_DIR / "cookidoo_cookies.json"
-CONFIG_FILE = Path.home() / ".tmx_config.json"
+TMX_DIR = Path.home() / ".tmx-cli"
 
 COOKIDOO_BASE = "https://cookidoo.de"
 LOCALE = "de-DE"
@@ -41,7 +39,72 @@ LOCALE = "de-DE"
 # Algolia Search
 ALGOLIA_APP_ID = "3TA8NT85XJ"
 ALGOLIA_INDEX = "recipes-production-de"
+
+
+# Legacy constants (kept for backward compat, prefer the functions above)
+WEEKPLAN_JSON = SCRIPT_DIR / "cookidoo_weekplan_raw.json"
+COOKIES_FILE = SCRIPT_DIR / "cookidoo_cookies.json"
+CONFIG_FILE = Path.home() / ".tmx_config.json"
 SEARCH_TOKEN_FILE = SCRIPT_DIR / "cookidoo_search_token.json"
+CATEGORIES_CACHE_FILE = SCRIPT_DIR / "cookidoo_categories.json"
+
+
+_profile_override: Optional[str] = None
+
+
+def _set_profile_override(name: str) -> None:
+    global _profile_override
+    _profile_override = name
+
+
+def _get_active_profile() -> Optional[str]:
+    """Get the active profile name, or None if no profiles configured."""
+    if _profile_override:
+        return _profile_override
+    active_file = TMX_DIR / "active_profile"
+    if active_file.exists():
+        name = active_file.read_text(encoding="utf-8").strip()
+        if name and (TMX_DIR / "profiles" / name).exists():
+            return name
+    return None
+
+
+def _get_data_dir() -> Path:
+    """Get the data directory for the current profile (or legacy SCRIPT_DIR)."""
+    profile = _get_active_profile()
+    if profile:
+        d = TMX_DIR / "profiles" / profile
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    # Legacy: use script directory (backward compatible)
+    return SCRIPT_DIR
+
+
+def _get_config_file() -> Path:
+    """Get config file path for current profile."""
+    profile = _get_active_profile()
+    if profile:
+        return TMX_DIR / "profiles" / profile / "config.json"
+    return Path.home() / ".tmx_config.json"
+
+
+# Dynamic path properties (resolved at call time, not import time)
+def get_cookies_file() -> Path:
+    return _get_data_dir() / "cookidoo_cookies.json"
+
+def get_weekplan_file() -> Path:
+    return _get_data_dir() / "cookidoo_weekplan_raw.json"
+
+def get_search_token_file() -> Path:
+    return _get_data_dir() / "cookidoo_search_token.json"
+
+def get_categories_cache_file() -> Path:
+    # Categories are shared across profiles (not user-specific)
+    if _get_active_profile():
+        TMX_DIR.mkdir(parents=True, exist_ok=True)
+        return TMX_DIR / "cookidoo_categories.json"
+    return SCRIPT_DIR / "cookidoo_categories.json"
+
 
 # Recipe Categories (ID -> German name) - Hardcoded fallback
 CATEGORIES_FALLBACK = {
@@ -61,7 +124,6 @@ CATEGORIES_FALLBACK = {
     "saucen": "VrkNavCategory-RPF-018",
     "snacks": "VrkNavCategory-RPF-020",
 }
-CATEGORIES_CACHE_FILE = SCRIPT_DIR / "cookidoo_categories.json"
 
 
 def load_categories() -> tuple[dict[str, str], bool]:
@@ -69,9 +131,10 @@ def load_categories() -> tuple[dict[str, str], bool]:
     Load categories from cache file or fallback to hardcoded.
     Returns (categories_dict, from_cache).
     """
-    if CATEGORIES_CACHE_FILE.exists():
+    cache_file = get_categories_cache_file()
+    if cache_file.exists():
         try:
-            with open(CATEGORIES_CACHE_FILE, "r", encoding="utf-8") as f:
+            with open(cache_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             categories = data.get("categories", {})
             if categories:
@@ -223,7 +286,7 @@ def sync_categories(progress_callback=None) -> tuple[dict[str, str], list[str]]:
             "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
             "categories": categories,
         }
-        with open(CATEGORIES_CACHE_FILE, "w", encoding="utf-8") as f:
+        with open(get_categories_cache_file(), "w", encoding="utf-8") as f:
             json.dump(cache_data, f, ensure_ascii=False, indent=2)
     
     return categories, errors
@@ -239,19 +302,22 @@ CATEGORY_NAMES = {v: k for k, v in CATEGORIES.items()}  # Reverse lookup
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_config() -> dict:
-    """Load user config from ~/.tmx_config.json or return empty dict."""
-    if not CONFIG_FILE.exists():
+    """Load user config from config file or return empty dict."""
+    config_file = _get_config_file()
+    if not config_file.exists():
         return {}
     try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(config_file, "r", encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, IOError):
         return {}
 
 
 def save_config(config: dict):
-    """Save user config to ~/.tmx_config.json."""
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+    """Save user config to config file."""
+    config_file = _get_config_file()
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_file, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
 
 
@@ -261,10 +327,11 @@ def save_config(config: dict):
 
 def load_cookies() -> dict[str, str]:
     """Load cookies from JSON file (Puppeteer format)."""
-    if not COOKIES_FILE.exists():
+    cookies_file = get_cookies_file()
+    if not cookies_file.exists():
         return {}
-    
-    with open(COOKIES_FILE, "r", encoding="utf-8") as f:
+
+    with open(cookies_file, "r", encoding="utf-8") as f:
         cookies_raw = json.load(f)
     
     # Puppeteer format: list of {name, value, domain, ...}
@@ -303,7 +370,9 @@ def save_cookies_from_jar(jar: CookieJar):
             "session": cookie.expires is None,
         })
     
-    with open(COOKIES_FILE, "w", encoding="utf-8") as f:
+    cookies_file = get_cookies_file()
+    cookies_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(cookies_file, "w", encoding="utf-8") as f:
         json.dump(cookies_list, f, ensure_ascii=False, indent=2)
     
     return cookies_list
@@ -654,27 +723,29 @@ def sync_weekplan(since: str, days_count: int = 14) -> dict:
 def get_search_token(cookies: dict[str, str]) -> Optional[str]:
     """Get Algolia search token from Cookidoo API."""
     # Check cached token
-    if SEARCH_TOKEN_FILE.exists():
+    search_token_file = get_search_token_file()
+    if search_token_file.exists():
         try:
-            with open(SEARCH_TOKEN_FILE, "r") as f:
+            with open(search_token_file, "r") as f:
                 cached = json.load(f)
             # Check if still valid (with 5 min buffer)
             if cached.get("validUntil", 0) > dt.datetime.now().timestamp() + 300:
                 return cached.get("apiKey")
         except:
             pass
-    
+
     # Fetch new token
     url = f"{COOKIDOO_BASE}/search/api/subscription/token"
     status, body = fetch(url, cookies)
-    
+
     if status != 200:
         return None
-    
+
     try:
         data = json.loads(body)
         # Cache token
-        with open(SEARCH_TOKEN_FILE, "w") as f:
+        search_token_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(search_token_file, "w") as f:
             json.dump(data, f)
         return data.get("apiKey")
     except:
@@ -1071,15 +1142,18 @@ def parse_shopping_ingredients(shopping_data: dict) -> list[dict]:
 
 def load_weekplan() -> Optional[dict]:
     """Load weekplan from JSON file."""
-    if not WEEKPLAN_JSON.exists():
+    weekplan_file = get_weekplan_file()
+    if not weekplan_file.exists():
         return None
-    with open(WEEKPLAN_JSON, "r", encoding="utf-8") as f:
+    with open(weekplan_file, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_weekplan(data: dict):
     """Save weekplan to JSON file."""
-    with open(WEEKPLAN_JSON, "w", encoding="utf-8") as f:
+    weekplan_file = get_weekplan_file()
+    weekplan_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(weekplan_file, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
@@ -1267,8 +1341,9 @@ def cmd_setup(args):
     
     # Reset config if requested
     if reset:
-        if CONFIG_FILE.exists():
-            CONFIG_FILE.unlink()
+        config_file = _get_config_file()
+        if config_file.exists():
+            config_file.unlink()
             print("✅ Konfiguration zurückgesetzt!")
             print()
         else:
@@ -1390,7 +1465,7 @@ def cmd_setup(args):
     print(time_line + " " * (51 - len(time_line)) + "║")
     
     print("╠" + "═" * 50 + "╣")
-    config_path_line = f"║  📁 {CONFIG_FILE}"
+    config_path_line = f"║  📁 {_get_config_file()}"
     # Truncate path if too long
     if len(config_path_line) > 50:
         config_path_line = f"║  📁 ~/.tmx_config.json"
@@ -1594,7 +1669,7 @@ def cmd_search(args):
     config = load_config()
     
     # Show setup hint if no config exists
-    if not config and not CONFIG_FILE.exists():
+    if not config and not _get_config_file().exists():
         print()
         print("💡 Tipp: Führe 'tmx setup' aus um Standardfilter zu setzen")
     
@@ -1884,7 +1959,7 @@ def cmd_categories_show(args):
     if from_cache:
         # Load timestamp from cache
         try:
-            with open(CATEGORIES_CACHE_FILE, "r", encoding="utf-8") as f:
+            with open(get_categories_cache_file(), "r", encoding="utf-8") as f:
                 cache_data = json.load(f)
             ts = cache_data.get("timestamp", "")[:16].replace("T", " ")
             print(f"  (aus Cache, Stand: {ts} UTC)")
@@ -1918,7 +1993,7 @@ def cmd_categories_sync(args):
     print()
     if categories:
         print(f"✅ {len(categories)} Kategorien synchronisiert!")
-        print(f"   Gespeichert in: {CATEGORIES_CACHE_FILE}")
+        print(f"   Gespeichert in: {get_categories_cache_file()}")
         
         # Reload global CATEGORIES
         global CATEGORIES, CATEGORY_NAMES
@@ -2022,6 +2097,184 @@ def cmd_favorites(args):
     cmd_favorites_show(args)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Profile Management
+# ─────────────────────────────────────────────────────────────────────────────
+
+def cmd_profile_list(args):
+    """List all profiles."""
+    profiles_dir = TMX_DIR / "profiles"
+
+    print()
+    print("👥 Profile")
+    print("─" * 40)
+
+    if not profiles_dir.exists() or not any(profiles_dir.iterdir()):
+        print("  Keine Profile konfiguriert.")
+        print()
+        print("  Profil erstellen: tmx profile add <name>")
+        print()
+        return
+
+    active = _get_active_profile()
+
+    for profile_dir in sorted(profiles_dir.iterdir()):
+        if not profile_dir.is_dir():
+            continue
+        name = profile_dir.name
+        is_active = (name == active)
+        marker = " *" if is_active else "  "
+
+        # Check login status
+        cookie_file = profile_dir / "cookidoo_cookies.json"
+        if cookie_file.exists():
+            try:
+                with open(cookie_file, "r", encoding="utf-8") as f:
+                    cookies_raw = json.load(f)
+                cookies = {c["name"]: c["value"] for c in cookies_raw if c.get("name")}
+                status = "eingeloggt" if is_authenticated(cookies) else "nicht eingeloggt"
+            except (json.JSONDecodeError, KeyError):
+                status = "nicht eingeloggt"
+        else:
+            status = "nicht eingeloggt"
+
+        print(f" {marker} {name}  ({status})")
+
+    print()
+    if active:
+        print(f"  Aktiv: {active}")
+    print("  Wechseln: tmx profile switch <name>")
+    print()
+
+
+def cmd_profile_add(args):
+    """Create a new profile."""
+    name = args.name.strip().lower()
+
+    # Validate name
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        print("❌ Profilname darf nur Buchstaben, Zahlen, - und _ enthalten.")
+        return
+
+    profiles_dir = TMX_DIR / "profiles"
+    profile_dir = profiles_dir / name
+
+    if profile_dir.exists():
+        print(f"❌ Profil '{name}' existiert bereits.")
+        return
+
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    # If this is the first profile, set it as active
+    active_file = TMX_DIR / "active_profile"
+    if not active_file.exists() or not active_file.read_text().strip():
+        active_file.write_text(name, encoding="utf-8")
+        print(f"✅ Profil '{name}' erstellt und als aktiv gesetzt.")
+    else:
+        print(f"✅ Profil '{name}' erstellt.")
+
+    print(f"   Jetzt einloggen: tmx --profile {name} login")
+    print()
+
+
+def cmd_profile_switch(args):
+    """Switch active profile."""
+    name = args.name.strip().lower()
+    profile_dir = TMX_DIR / "profiles" / name
+
+    if not profile_dir.exists():
+        print(f"❌ Profil '{name}' nicht gefunden.")
+        print("  Verfügbare Profile: tmx profile list")
+        return
+
+    active_file = TMX_DIR / "active_profile"
+    TMX_DIR.mkdir(parents=True, exist_ok=True)
+    active_file.write_text(name, encoding="utf-8")
+
+    print(f"✅ Aktives Profil: {name}")
+    print()
+
+
+def cmd_profile_remove(args):
+    """Remove a profile."""
+    import shutil
+    name = args.name.strip().lower()
+    profile_dir = TMX_DIR / "profiles" / name
+
+    if not profile_dir.exists():
+        print(f"❌ Profil '{name}' nicht gefunden.")
+        return
+
+    # Confirm
+    confirm = input(f"Profil '{name}' und alle Daten löschen? [j/N] ").strip().lower()
+    if confirm not in ("j", "ja", "y", "yes"):
+        print("Abgebrochen.")
+        return
+
+    shutil.rmtree(profile_dir)
+
+    # If this was the active profile, clear it
+    active_file = TMX_DIR / "active_profile"
+    if active_file.exists() and active_file.read_text().strip() == name:
+        # Switch to another profile if available
+        profiles = [d.name for d in (TMX_DIR / "profiles").iterdir() if d.is_dir()]
+        if profiles:
+            active_file.write_text(profiles[0], encoding="utf-8")
+            print(f"✅ Profil '{name}' gelöscht. Aktiv: {profiles[0]}")
+        else:
+            active_file.unlink()
+            print(f"✅ Profil '{name}' gelöscht. Keine Profile mehr vorhanden.")
+    else:
+        print(f"✅ Profil '{name}' gelöscht.")
+    print()
+
+
+def cmd_profile_show(args):
+    """Show active profile details."""
+    active = _get_active_profile()
+
+    print()
+    if not active:
+        print("  Kein aktives Profil.")
+        print("  Profil erstellen: tmx profile add <name>")
+        print()
+        return
+
+    print(f"  📋 Aktives Profil: {active}")
+    print(f"  📁 Verzeichnis: {TMX_DIR / 'profiles' / active}")
+
+    # Show config if exists
+    config_file = TMX_DIR / "profiles" / active / "config.json"
+    if config_file.exists():
+        try:
+            with open(config_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            if config.get('tm_version'):
+                print(f"  🔧 Thermomix: {config['tm_version']}")
+            if config.get('diet'):
+                print(f"  🥗 Ernährung: {config['diet']}")
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Show login status
+    cookie_file = TMX_DIR / "profiles" / active / "cookidoo_cookies.json"
+    if cookie_file.exists():
+        try:
+            with open(cookie_file, "r", encoding="utf-8") as f:
+                cookies_raw = json.load(f)
+            cookies = {c["name"]: c["value"] for c in cookies_raw if c.get("name")}
+            if is_authenticated(cookies):
+                print(f"  ✅ Eingeloggt ({len(cookies)} Cookies)")
+            else:
+                print("  ❌ Nicht eingeloggt")
+        except (json.JSONDecodeError, OSError):
+            print("  ❌ Nicht eingeloggt")
+    else:
+        print("  ❌ Nicht eingeloggt")
+
+    print()
+
+
 def cmd_status(args):
     """Show status of CLI and cookies."""
     print()
@@ -2036,7 +2289,7 @@ def cmd_status(args):
         print("❌ Keine gültigen Session-Cookies")
     
     # Weekplan
-    if WEEKPLAN_JSON.exists():
+    if get_weekplan_file().exists():
         data = load_weekplan()
         if data:
             ts = data.get("timestamp", "?")[:16].replace("T", " ")
@@ -2046,10 +2299,10 @@ def cmd_status(args):
             print("⚠ Wochenplan-Datei leer")
     else:
         print("❌ Kein Wochenplan gespeichert")
-    
+
     print()
-    print(f"Cookies: {COOKIES_FILE}")
-    print(f"Daten:   {WEEKPLAN_JSON}")
+    print(f"Cookies: {get_cookies_file()}")
+    print(f"Daten:   {get_weekplan_file()}")
     print()
 
 
@@ -2058,13 +2311,13 @@ def cmd_cache_clear(args):
     import os
     
     files = [
-        ("Wochenplan", WEEKPLAN_JSON),
-        ("Such-Token", SEARCH_TOKEN_FILE),
+        ("Wochenplan", get_weekplan_file()),
+        ("Such-Token", get_search_token_file()),
     ]
-    
+
     # Optional: also clear cookies
     if getattr(args, 'all', False):
-        files.append(("Session-Cookies", COOKIES_FILE))
+        files.append(("Session-Cookies", get_cookies_file()))
     
     print()
     print("🗑️  Cache löschen")
@@ -2511,12 +2764,13 @@ _tmx_completion() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="plan search recipe categories favorites today shopping status cache login setup completion"
+    local commands="plan search recipe categories favorites today shopping status cache login setup completion profile"
     local plan_cmds="show sync add remove move"
     local shopping_cmds="show add add-item from-plan remove clear export"
     local cache_cmds="clear"
     local categories_cmds="show sync"
     local favorites_cmds="show add remove"
+    local profile_cmds="list add switch remove show"
 
     # Get the main command and subcommand
     local cmd="" subcmd=""
@@ -2583,6 +2837,7 @@ _tmx_completion() {
                     categories) COMPREPLY=($(compgen -W "${categories_cmds}" -- "${cur}")) ;;
                     favorites) COMPREPLY=($(compgen -W "${favorites_cmds}" -- "${cur}")) ;;
                     completion) COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}")) ;;
+                    profile) COMPREPLY=($(compgen -W "${profile_cmds}" -- "${cur}")) ;;
                 esac
             fi
             ;;
@@ -2619,6 +2874,7 @@ _tmx() {
                 'login:Bei Cookidoo einloggen'
                 'setup:Interaktives Onboarding/Setup'
                 'completion:Shell-Completion ausgeben'
+                'profile:Profile verwalten'
             )
             _describe 'command' commands
             ;;
@@ -2724,6 +2980,29 @@ _tmx() {
                 completion)
                     _arguments '1:shell:(bash zsh fish)'
                     ;;
+                profile)
+                    _arguments -C '1: :->profile_cmd' '*:: :->profile_args'
+                    case "$state" in
+                        profile_cmd)
+                            local -a profile_cmds
+                            profile_cmds=(
+                                'list:Alle Profile anzeigen'
+                                'add:Neues Profil erstellen'
+                                'switch:Aktives Profil wechseln'
+                                'remove:Profil löschen'
+                                'show:Aktives Profil anzeigen'
+                            )
+                            _describe 'profile command' profile_cmds
+                            ;;
+                        profile_args)
+                            case "$line[1]" in
+                                add) _arguments '1:name' ;;
+                                switch) _arguments '1:name' ;;
+                                remove) _arguments '1:name' ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
             esac
             ;;
     esac
@@ -2735,7 +3014,8 @@ compdef _tmx tmx
 FISH_COMPLETION = '''
 # tmx completions for fish
 
-set -l commands plan search recipe categories favorites today shopping status cache login setup completion
+set -l commands plan search recipe categories favorites today shopping status cache login setup completion profile
+set -l profile_cmds "list add switch remove show"
 set -l plan_cmds show sync add remove move
 set -l shopping_cmds show add add-item from-plan remove clear export
 set -l cache_cmds clear
@@ -2812,6 +3092,14 @@ complete -c tmx -n "__fish_seen_subcommand_from setup" -l reset -d "Konfiguratio
 
 # completion
 complete -c tmx -n "__fish_seen_subcommand_from completion" -a "bash zsh fish" -d "Shell"
+
+# profile command
+complete -c tmx -n "not __fish_seen_subcommand_from $commands" -a "profile" -d "Profile verwalten"
+complete -c tmx -n "__fish_seen_subcommand_from profile; and not __fish_seen_subcommand_from $profile_cmds" -a "list" -d "Alle Profile anzeigen"
+complete -c tmx -n "__fish_seen_subcommand_from profile; and not __fish_seen_subcommand_from $profile_cmds" -a "add" -d "Neues Profil erstellen"
+complete -c tmx -n "__fish_seen_subcommand_from profile; and not __fish_seen_subcommand_from $profile_cmds" -a "switch" -d "Aktives Profil wechseln"
+complete -c tmx -n "__fish_seen_subcommand_from profile; and not __fish_seen_subcommand_from $profile_cmds" -a "remove" -d "Profil löschen"
+complete -c tmx -n "__fish_seen_subcommand_from profile; and not __fish_seen_subcommand_from $profile_cmds" -a "show" -d "Aktives Profil anzeigen"
 '''
 
 
@@ -2836,6 +3124,7 @@ def build_parser():
         description="🍳 Thermomix/Cookidoo CLI - Wochenplan & Rezepte",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument("--profile", "-P", help="Profil verwenden (statt aktives Profil)")
     sub = parser.add_subparsers(dest="command", required=True)
     
     # plan command with subcommands
@@ -2995,13 +3284,48 @@ def build_parser():
     completion_parser = sub.add_parser("completion", help="Shell-Completion ausgeben")
     completion_parser.add_argument("shell", choices=["bash", "zsh", "fish"], help="Shell-Typ")
     completion_parser.set_defaults(func=cmd_completion)
-    
+
+    # profile command with subcommands
+    profile_parser = sub.add_parser("profile", help="Profile verwalten (mehrere Cookidoo-Accounts)")
+    profile_sub = profile_parser.add_subparsers(dest="profile_action")
+
+    profile_list = profile_sub.add_parser("list", help="Alle Profile anzeigen")
+    profile_list.set_defaults(func=cmd_profile_list)
+
+    profile_add = profile_sub.add_parser("add", help="Neues Profil erstellen")
+    profile_add.add_argument("name", help="Profilname")
+    profile_add.set_defaults(func=cmd_profile_add)
+
+    profile_switch = profile_sub.add_parser("switch", help="Aktives Profil wechseln")
+    profile_switch.add_argument("name", help="Profilname")
+    profile_switch.set_defaults(func=cmd_profile_switch)
+
+    profile_remove = profile_sub.add_parser("remove", help="Profil löschen")
+    profile_remove.add_argument("name", help="Profilname")
+    profile_remove.set_defaults(func=cmd_profile_remove)
+
+    profile_show = profile_sub.add_parser("show", help="Aktives Profil anzeigen")
+    profile_show.set_defaults(func=cmd_profile_show)
+
+    # Default action for 'profile' without subcommand
+    profile_parser.set_defaults(func=cmd_profile_list)
+
     return parser
 
 
 def main():
     parser = build_parser()
     args = parser.parse_args()
+
+    # Handle --profile override
+    if getattr(args, 'profile', None):
+        profile_dir = TMX_DIR / "profiles" / args.profile
+        if not profile_dir.exists():
+            print(f"❌ Profil '{args.profile}' nicht gefunden.")
+            print("Verfügbare Profile: tmx profile list")
+            sys.exit(1)
+        _set_profile_override(args.profile)
+
     args.func(args)
 
 
