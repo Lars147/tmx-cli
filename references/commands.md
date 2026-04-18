@@ -130,4 +130,4 @@ tmx login
 ```
 OAuth login flow with Cookidoo account. Opens browser for authentication.
 
-Credentials stored in `secrets/cookidoo.env` (COOKIDOO_EMAIL, COOKIDOO_PASSWORD).
+Credentials can be provided interactively or via environment variables (`COOKIDOO_EMAIL`, `COOKIDOO_PASSWORD`).
