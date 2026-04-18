@@ -414,7 +414,7 @@ def do_login(email: str, password: str) -> tuple[bool, str]:
                 # Check if we're authenticated
                 if "is-authenticated" in result_html or "my-week" in final_url:
                     break
-            except:
+            except Exception:
                 pass
         
         # Look for redirect in response
@@ -439,7 +439,7 @@ def do_login(email: str, password: str) -> tuple[bool, str]:
                     final_url = e.headers.get("Location", "")
                 else:
                     break
-            except:
+            except Exception:
                 break
         else:
             break
@@ -661,7 +661,7 @@ def get_search_token(cookies: dict[str, str]) -> Optional[str]:
             # Check if still valid (with 5 min buffer)
             if cached.get("validUntil", 0) > dt.datetime.now().timestamp() + 300:
                 return cached.get("apiKey")
-        except:
+        except (json.JSONDecodeError, KeyError, OSError):
             pass
     
     # Fetch new token
@@ -677,7 +677,7 @@ def get_search_token(cookies: dict[str, str]) -> Optional[str]:
         with open(SEARCH_TOKEN_FILE, "w") as f:
             json.dump(data, f)
         return data.get("apiKey")
-    except:
+    except (json.JSONDecodeError, KeyError, OSError):
         return None
 
 
@@ -855,16 +855,16 @@ def remove_recipe_from_plan(recipe_id: str, date: str) -> tuple[bool, str]:
 
 def move_recipe_in_plan(recipe_id: str, from_date: str, to_date: str) -> tuple[bool, str]:
     """Move a recipe from one date to another."""
-    # Remove from old date
-    success, msg = remove_recipe_from_plan(recipe_id, from_date)
-    if not success:
-        return False, f"Entfernen fehlgeschlagen: {msg}"
-    
-    # Add to new date
+    # Add to new date FIRST (safer: duplicate is better than lost)
     success, msg = add_recipe_to_plan(recipe_id, to_date)
     if not success:
         return False, f"Hinzufügen fehlgeschlagen: {msg}"
-    
+
+    # Only remove from old date after successful add
+    success, msg = remove_recipe_from_plan(recipe_id, from_date)
+    if not success:
+        return False, f"Verschoben, aber Entfernen vom alten Datum fehlgeschlagen: {msg}"
+
     return True, "Rezept verschoben"
 
 
@@ -892,7 +892,7 @@ def get_shopping_list() -> Optional[dict]:
     try:
         with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
             return json.loads(resp.read().decode())
-    except:
+    except Exception:
         return None
 
 
@@ -961,7 +961,7 @@ def clear_shopping_list() -> tuple[bool, str]:
     if not is_authenticated(cookies):
         return False, "Nicht eingeloggt"
     
-    url = "https://cookidoo.de/shopping/de-DE"
+    url = f"{COOKIDOO_BASE}/shopping/{LOCALE}"
     headers = {
         "Cookie": format_cookie_header(cookies),
         "Accept": "application/json",
@@ -986,7 +986,7 @@ def add_custom_item_to_shopping_list(item_name: str) -> tuple[bool, str]:
     if not is_authenticated(cookies):
         return False, "Nicht eingeloggt"
     
-    url = "https://cookidoo.de/shopping/de-DE/additional-item"
+    url = f"{COOKIDOO_BASE}/shopping/{LOCALE}/additional-item"
     headers = {
         "Cookie": format_cookie_header(cookies),
         "Accept": "application/json",
@@ -1888,7 +1888,7 @@ def cmd_categories_show(args):
                 cache_data = json.load(f)
             ts = cache_data.get("timestamp", "")[:16].replace("T", " ")
             print(f"  (aus Cache, Stand: {ts} UTC)")
-        except:
+        except (json.JSONDecodeError, OSError):
             print("  (aus Cache)")
     else:
         print("  (hardcodiert – führe 'tmx categories sync' für aktuelle Liste aus)")
@@ -2094,9 +2094,10 @@ def cmd_login(args):
     print("─" * 40)
     
     # Get credentials
+    import os
     email = getattr(args, 'email', None)
-    password = getattr(args, 'password', None)
-    
+    password = getattr(args, 'password', None) or os.environ.get("COOKIDOO_PASSWORD") or None
+
     if not email:
         email = input("E-Mail: ").strip()
     if not password:
@@ -2481,7 +2482,7 @@ def cmd_shopping_from_plan(args):
                     rid = recipe.get("id")
                     if rid and rid not in recipe_ids:
                         recipe_ids.append(rid)
-        except:
+        except (ValueError, TypeError):
             continue
     
     if not recipe_ids:
@@ -2983,7 +2984,7 @@ def build_parser():
     # login command
     login_parser = sub.add_parser("login", help="Bei Cookidoo einloggen")
     login_parser.add_argument("--email", "-e", help="E-Mail-Adresse")
-    login_parser.add_argument("--password", "-p", help="Passwort")
+    login_parser.add_argument("--password", "-p", help="Passwort (UNSICHER - nutze COOKIDOO_PASSWORD Umgebungsvariable)")
     login_parser.set_defaults(func=cmd_login)
     
     # setup command
