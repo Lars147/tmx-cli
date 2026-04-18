@@ -5,6 +5,7 @@ cookidoo_search_token.json
 
 # Cache
 cookidoo_weekplan_raw.json
+cookidoo_categories.json
 __pycache__/
 *.pyc
 
