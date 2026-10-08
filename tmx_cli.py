@@ -1150,11 +1150,11 @@ def parse_favorites_html(html: str) -> list[dict]:
     return recipes
 
 
-def add_to_favorites(recipe_id: str) -> tuple[bool, str]:
+def _bookmark_request(method: str, recipe_id: str) -> tuple[bool, str]:
     """
-    Add a recipe to favorites/bookmarks.
-    Uses form-encoded POST with _method=put (Rails-style method override).
-    Returns (success, message).
+    Add (PUT) or remove (DELETE) a recipe on the Cookidoo Merkliste.
+    The endpoint expects a JSON body plus the XSRF token from the session cookies.
+    Returns (success, message) using Cookidoo's own message text.
     """
     cookies = load_cookies()
     if not is_authenticated(cookies):
@@ -1164,91 +1164,49 @@ def add_to_favorites(recipe_id: str) -> tuple[bool, str]:
     if not recipe_id.startswith('r'):
         recipe_id = f'r{recipe_id}'
     
-    url = f"{COOKIDOO_BASE}/organize/{LOCALE}/api/bookmark"
-    
-    # Form-encoded data with method override
-    data = urllib.parse.urlencode({
-        "_method": "put",
-        "recipeId": recipe_id,
-    }).encode("utf-8")
-    
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
         "Cookie": format_cookie_header(cookies),
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "text/html, application/json, */*",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-XSRF-TOKEN": urllib.parse.unquote(cookies.get("XSRF-TOKEN", "")),
         "Origin": COOKIDOO_BASE,
-        "Referer": f"{COOKIDOO_BASE}/recipes/recipe/{LOCALE}/{recipe_id}",
     }
-    
-    ctx = ssl.create_default_context()
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    req = urllib.request.Request(
+        f"{COOKIDOO_BASE}/organize/{LOCALE}/api/bookmark",
+        data=json.dumps({"recipeId": recipe_id}).encode("utf-8"),
+        headers=headers,
+        method=method,
+    )
     
     try:
-        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
-            # Success - recipe added to favorites
-            return True, "Rezept zu Favoriten hinzugefügt"
+        with urllib.request.urlopen(req, context=ssl.create_default_context(), timeout=30) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as e:
-        if e.code in (200, 201, 204):
-            return True, "Rezept zu Favoriten hinzugefügt"
-        elif e.code == 409:
-            return True, "Rezept ist bereits in den Favoriten"
-        elif e.code == 401:
+        if e.code == 401:
             return False, "Session abgelaufen - bitte neu einloggen"
-        elif e.code == 404:
-            return False, f"Rezept {recipe_id} nicht gefunden"
-        return False, f"HTTP {e.code}"
+        try:
+            return False, json.loads(e.read())["message"]
+        except (ValueError, KeyError):
+            return False, f"HTTP {e.code}"
     except Exception as e:
         return False, str(e)
+    
+    # A 2xx with an HTML page means the request was not understood, not that it worked
+    try:
+        return True, json.loads(body)["message"]
+    except (ValueError, KeyError):
+        return False, "Unerwartete Antwort von Cookidoo"
+
+
+def add_to_favorites(recipe_id: str) -> tuple[bool, str]:
+    """Add a recipe to favorites/bookmarks. Returns (success, message)."""
+    return _bookmark_request("PUT", recipe_id)
 
 
 def remove_from_favorites(recipe_id: str) -> tuple[bool, str]:
-    """
-    Remove a recipe from favorites/bookmarks.
-    Uses form-encoded POST with _method=delete (Rails-style method override).
-    Returns (success, message).
-    """
-    cookies = load_cookies()
-    if not is_authenticated(cookies):
-        return False, "Nicht eingeloggt"
-    
-    # Ensure recipe_id starts with 'r'
-    if not recipe_id.startswith('r'):
-        recipe_id = f'r{recipe_id}'
-    
-    url = f"{COOKIDOO_BASE}/organize/{LOCALE}/api/bookmark"
-    
-    # Form-encoded data with method override
-    data = urllib.parse.urlencode({
-        "_method": "delete",
-        "recipeId": recipe_id,
-    }).encode("utf-8")
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
-        "Cookie": format_cookie_header(cookies),
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "text/html, application/json, */*",
-        "Origin": COOKIDOO_BASE,
-        "Referer": f"{COOKIDOO_BASE}/organize/{LOCALE}/my-recipes",
-    }
-    
-    ctx = ssl.create_default_context()
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    
-    try:
-        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
-            return True, "Rezept aus Favoriten entfernt"
-    except urllib.error.HTTPError as e:
-        if e.code in (200, 204):
-            return True, "Rezept aus Favoriten entfernt"
-        elif e.code == 401:
-            return False, "Session abgelaufen - bitte neu einloggen"
-        elif e.code == 404:
-            return False, f"Rezept {recipe_id} nicht in Favoriten gefunden"
-        return False, f"HTTP {e.code}"
-    except Exception as e:
-        return False, str(e)
+    """Remove a recipe from favorites/bookmarks. Returns (success, message)."""
+    return _bookmark_request("DELETE", recipe_id)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
