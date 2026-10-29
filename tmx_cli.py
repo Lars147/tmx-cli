@@ -229,9 +229,15 @@ def sync_categories(progress_callback=None) -> tuple[dict[str, str], list[str]]:
     return categories, errors
 
 
-# Alias for backward compatibility
-CATEGORIES, _ = load_categories()
-CATEGORY_NAMES = {v: k for k, v in CATEGORIES.items()}  # Reverse lookup
+_categories_cache = None
+
+
+def get_categories() -> dict:
+    """Get categories, loading from cache/fallback on first access."""
+    global _categories_cache
+    if _categories_cache is None:
+        _categories_cache, _ = load_categories()
+    return _categories_cache
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -714,7 +720,7 @@ def search_recipes(
     if tm_version:
         filters.append(f"tmversion:{tm_version}")
     if category:
-        cat_id = CATEGORIES.get(category.lower())
+        cat_id = get_categories().get(category.lower())
         if cat_id:
             filters.append(f"categories.id:{cat_id}")
     
@@ -771,6 +777,17 @@ def format_time(seconds: Optional[int]) -> str:
     if mins:
         return f"{hours}h {mins}min"
     return f"{hours}h"
+
+
+def format_qty(qty) -> str:
+    """Format a quantity value safely, handling None/string/float."""
+    if qty is None or qty == "":
+        return ""
+    try:
+        qty = float(qty)
+    except (TypeError, ValueError):
+        return str(qty)
+    return str(int(qty)) if qty == int(qty) else f"{qty:.1f}"
 
 
 def seconds_to_minutes(seconds: Optional[int]) -> Optional[int]:
@@ -1698,9 +1715,8 @@ def cmd_recipe_show(args):
     # Servings
     serving_size = data.get("servingSize", {})
     servings = serving_size.get("quantity", {}).get("value", "")
-    if servings and servings == int(servings):
-        servings = int(servings)
-    
+    servings_str = format_qty(servings) if servings else ""
+
     # Nutrition data - parse the complex structure
     nutrition = {}
     for ng in data.get("nutritionGroups", []):
@@ -1741,8 +1757,8 @@ def cmd_recipe_show(args):
         print(f"⏱  {' | '.join(time_parts)}")
     
     # Servings
-    if servings:
-        print(f"👥  {servings} Portionen")
+    if servings_str:
+        print(f"👥  {servings_str} Portionen")
     
     # Difficulty and TM version
     info_parts = []
@@ -1802,13 +1818,7 @@ def cmd_recipe_show(args):
             optional = ing.get("optional", False)
             
             # Format quantity
-            if qty:
-                if qty == int(qty):
-                    qty_str = str(int(qty))
-                else:
-                    qty_str = f"{qty:.1f}"
-            else:
-                qty_str = ""
+            qty_str = format_qty(qty)
             
             # Build ingredient line
             parts = []
@@ -1878,10 +1888,9 @@ def cmd_categories_sync(args):
         print(f"✅ {len(categories)} Kategorien synchronisiert!")
         print(f"   Gespeichert in: {CATEGORIES_CACHE_FILE}")
         
-        # Reload global CATEGORIES
-        global CATEGORIES, CATEGORY_NAMES
-        CATEGORIES = categories
-        CATEGORY_NAMES = {v: k for k, v in CATEGORIES.items()}
+        # Reload global categories cache
+        global _categories_cache
+        _categories_cache = categories
     else:
         print("❌ Keine Kategorien synchronisiert.")
     
@@ -2013,8 +2022,6 @@ def cmd_status(args):
 
 def cmd_cache_clear(args):
     """Clear cached data files."""
-    import os
-    
     files = [
         ("Wochenplan", WEEKPLAN_JSON),
         ("Such-Token", SEARCH_TOKEN_FILE),
@@ -2031,7 +2038,7 @@ def cmd_cache_clear(args):
     deleted = 0
     for name, path in files:
         if path.exists():
-            os.remove(path)
+            path.unlink()
             print(f"  ✅ {name} gelöscht")
             deleted += 1
         else:
@@ -2186,11 +2193,8 @@ def cmd_shopping_show(args):
                 prep_str = f" ({prep})" if prep else ""
                 opt_str = " (optional)" if optional else ""
                 
-                if qty == int(qty):
-                    qty_str = str(int(qty))
-                else:
-                    qty_str = f"{qty:.1f}"
-                
+                qty_str = format_qty(qty)
+
                 check = "✓" if is_owned else " "
                 print(f"  [{check}] {qty_str} {unit} {name}{prep_str}{opt_str}")
         
@@ -2228,11 +2232,8 @@ def cmd_shopping_show(args):
                 opt = " (optional)" if ing["optional"] else ""
                 
                 # Format quantity nicely
-                if qty == int(qty):
-                    qty_str = str(int(qty))
-                else:
-                    qty_str = f"{qty:.1f}"
-                
+                qty_str = format_qty(qty)
+
                 print(f"  [ ] {qty_str} {unit} {name}{prep}{opt}")
             
             if owned:
@@ -2328,8 +2329,7 @@ def cmd_shopping_export(args):
     lines = []
     
     if fmt == "json":
-        import json as json_module
-        output = json_module.dumps(data, indent=2, ensure_ascii=False)
+        output = json.dumps(data, indent=2, ensure_ascii=False)
     elif fmt == "markdown":
         if by_recipe:
             for recipe in recipes:
@@ -2341,7 +2341,7 @@ def cmd_shopping_export(args):
                     name = ing.get("ingredientNotation", "")
                     qty = ing.get("quantity", {}).get("value", 0)
                     unit = ing.get("unitNotation", "")
-                    qty_str = str(int(qty)) if qty == int(qty) else f"{qty:.1f}"
+                    qty_str = format_qty(qty)
                     is_owned = ing.get("isOwned", False)
                     check = "x" if is_owned else " "
                     lines.append(f"- [{check}] {qty_str} {unit} {name}")
@@ -2354,7 +2354,7 @@ def cmd_shopping_export(args):
                 if ing["is_owned"]:
                     continue
                 qty = ing["quantity"]
-                qty_str = str(int(qty)) if qty == int(qty) else f"{qty:.1f}"
+                qty_str = format_qty(qty)
                 lines.append(f"- [ ] {qty_str} {ing['unit']} {ing['name']}")
         
         # Additional items
@@ -2377,7 +2377,7 @@ def cmd_shopping_export(args):
                     name = ing.get("ingredientNotation", "")
                     qty = ing.get("quantity", {}).get("value", 0)
                     unit = ing.get("unitNotation", "")
-                    qty_str = str(int(qty)) if qty == int(qty) else f"{qty:.1f}"
+                    qty_str = format_qty(qty)
                     lines.append(f"  {qty_str} {unit} {name}")
                 lines.append("")
         else:
@@ -2386,7 +2386,7 @@ def cmd_shopping_export(args):
                 if ing["is_owned"]:
                     continue
                 qty = ing["quantity"]
-                qty_str = str(int(qty)) if qty == int(qty) else f"{qty:.1f}"
+                qty_str = format_qty(qty)
                 lines.append(f"{qty_str} {ing['unit']} {ing['name']}")
         
         # Additional items
@@ -2843,7 +2843,7 @@ def build_parser():
     search_parser.add_argument("-t", "--time", type=int, help="Max. Zubereitungszeit in Minuten")
     search_parser.add_argument("-d", "--difficulty", choices=["easy", "medium", "advanced"], help="Schwierigkeitsgrad")
     search_parser.add_argument("--tm", choices=["TM5", "TM6", "TM7"], help="Thermomix-Version")
-    search_parser.add_argument("-c", "--category", choices=list(CATEGORIES.keys()), help="Kategorie")
+    search_parser.add_argument("-c", "--category", choices=list(get_categories().keys()), help="Kategorie")
     search_parser.set_defaults(func=cmd_search)
     
     # recipe command with subcommands
